@@ -179,12 +179,14 @@ database:
 Nexus consists of seven core components:
 
 **Dependency Injection:**
+
 1. **NexusContext** - Main container managing the lifecycle
 2. **ComponentRegistry** - Stores bean definitions and instances
 3. **BeanFactory** - Creates and injects dependencies
 4. **ComponentScanner** - Discovers annotated classes
 
 **Configuration:**
+
 5. **ConfigManager** - Centralized config management
 6. **ConfigLoader** - Loads/saves YAML files with reflection
 7. **Config Annotations** - @ConfigFile, @ConfigName, @Comment, @Transient
@@ -196,3 +198,4 @@ Nexus connects your components together - like a nexus point in a network. It's 
 ## License
 
 MIT License - See LICENSE file for details
+
