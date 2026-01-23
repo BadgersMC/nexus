@@ -1,0 +1,268 @@
+package net.badgersmc.nexus.config
+
+import com.charleskorn.kaml.Yaml
+import com.charleskorn.kaml.YamlConfiguration
+import org.slf4j.LoggerFactory
+import java.nio.file.Path
+import kotlin.reflect.KClass
+import kotlin.reflect.KMutableProperty
+import kotlin.reflect.full.findAnnotation
+import kotlin.reflect.full.memberProperties
+import kotlin.reflect.jvm.isAccessible
+
+/**
+ * Loads and saves configuration files using YAML format with annotation support.
+ */
+class ConfigLoader(private val configDirectory: Path) {
+
+    private val logger = LoggerFactory.getLogger(ConfigLoader::class.java)
+
+    private val yaml = Yaml(configuration = YamlConfiguration(
+        strictMode = false,
+        encodeDefaults = true
+    ))
+
+    companion object {
+        private const val CONFIG_FILE_EXTENSION = ".yaml"
+    }
+
+    init {
+        if (!configDirectory.toFile().exists()) {
+            configDirectory.toFile().mkdirs()
+        }
+    }
+
+    /**
+     * Load a configuration object from file.
+     * If the file doesn't exist, creates it with default values.
+     */
+    fun <T : Any> load(configClass: KClass<T>): T {
+        val instance = configClass.constructors.first { it.parameters.isEmpty() }.call()
+        val fileName = getFileName(configClass)
+        val file = configDirectory.resolve("$fileName$CONFIG_FILE_EXTENSION")
+
+        if (!file.toFile().exists()) {
+            // Create with defaults
+            save(instance)
+            return instance
+        }
+
+        try {
+            val content = file.toFile().readText()
+            val yamlMap = yaml.decodeFromString(
+                kotlinx.serialization.serializer<Map<String, Any?>>(),
+                content
+            )
+            loadFromMap(instance, yamlMap)
+        } catch (e: Exception) {
+            logger.error("Failed to load config from $file: ${e.message}", e)
+        }
+
+        return instance
+    }
+
+    /**
+     * Save a configuration object to file.
+     */
+    fun <T : Any> save(config: T) {
+        val fileName = getFileName(config::class)
+        val file = configDirectory.resolve("$fileName$CONFIG_FILE_EXTENSION")
+
+        try {
+            val yamlMap = saveToMap(config)
+            val content = buildYamlString(config, yamlMap)
+            file.toFile().writeText(content)
+        } catch (e: Exception) {
+            logger.error("Failed to save config to $file: ${e.message}", e)
+        }
+    }
+
+    /**
+     * Reload a configuration object from file.
+     */
+    fun <T : Any> reload(config: T) {
+        val fileName = getFileName(config::class)
+        val file = configDirectory.resolve("$fileName$CONFIG_FILE_EXTENSION")
+
+        if (!file.toFile().exists()) {
+            return
+        }
+
+        try {
+            val content = file.toFile().readText()
+            val yamlMap = yaml.decodeFromString(
+                kotlinx.serialization.serializer<Map<String, Any?>>(),
+                content
+            )
+            loadFromMap(config, yamlMap)
+        } catch (e: Exception) {
+            logger.error("Failed to reload config from $file: ${e.message}", e)
+        }
+    }
+
+    /**
+     * Load values from map into object.
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun <T : Any> loadFromMap(obj: T, map: Map<String, Any?>) {
+        obj::class.memberProperties.forEach { property ->
+            if (property !is KMutableProperty<*>) return@forEach
+            if (property.findAnnotation<Transient>() != null) return@forEach
+
+            val configName = property.findAnnotation<ConfigName>()?.value ?: property.name
+            val value = map[configName] ?: return@forEach
+
+            try {
+                property.isAccessible = true
+                val convertedValue = when (property.returnType.classifier) {
+                    String::class -> value.toString()
+                    Int::class -> (value as? Number)?.toInt()
+                    Long::class -> (value as? Number)?.toLong()
+                    Double::class -> (value as? Number)?.toDouble()
+                    Float::class -> (value as? Number)?.toFloat()
+                    Boolean::class -> value as? Boolean
+                    List::class -> value as? List<*>
+                    Set::class -> (value as? List<*>)?.toSet()
+                    Map::class -> value as? Map<*, *>
+                    else -> {
+                        // Nested object
+                        val nestedInstance = property.getter.call(obj)
+                        if (nestedInstance != null && value is Map<*, *>) {
+                            loadFromMap(nestedInstance, value as Map<String, Any?>)
+                            nestedInstance
+                        } else null
+                    }
+                }
+
+                if (convertedValue != null) {
+                    property.setter.call(obj, convertedValue)
+                }
+            } catch (e: Exception) {
+                logger.error("Failed to load config field ${property.name}: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * Save object values to map.
+     */
+    private fun <T : Any> saveToMap(obj: T): MutableMap<String, Any?> {
+        val map = mutableMapOf<String, Any?>()
+
+        obj::class.memberProperties.forEach { property ->
+            if (property.findAnnotation<Transient>() != null) return@forEach
+
+            val configName = property.findAnnotation<ConfigName>()?.value ?: property.name
+
+            try {
+                property.isAccessible = true
+                val value = property.getter.call(obj)
+
+                when (value) {
+                    null -> return@forEach
+                    is String, is Number, is Boolean -> map[configName] = value
+                    is List<*> -> map[configName] = value
+                    is Set<*> -> map[configName] = value.toList()
+                    is Map<*, *> -> map[configName] = value
+                    else -> {
+                        // Nested object
+                        map[configName] = saveToMap(value)
+                    }
+                }
+            } catch (e: Exception) {
+                logger.error("Failed to save config field ${property.name}: ${e.message}")
+            }
+        }
+
+        return map
+    }
+
+    /**
+     * Build YAML string with comments.
+     */
+    private fun <T : Any> buildYamlString(obj: T, map: Map<String, Any?>): String {
+        val builder = StringBuilder()
+
+        // Add class-level comment
+        obj::class.findAnnotation<Comment>()?.let { comment ->
+            comment.value.forEach { line ->
+                builder.append("# $line\n")
+            }
+            builder.append("\n")
+        }
+
+        // Add properties with comments
+        obj::class.memberProperties.forEach { property ->
+            if (property.findAnnotation<Transient>() != null) return@forEach
+
+            val configName = property.findAnnotation<ConfigName>()?.value ?: property.name
+            val value = map[configName] ?: return@forEach
+
+            // Add property comment
+            property.findAnnotation<Comment>()?.let { comment ->
+                comment.value.forEach { line ->
+                    builder.append("# $line\n")
+                }
+            }
+
+            // Add property value
+            builder.append(formatYamlProperty(configName, value, 0))
+            builder.append("\n")
+        }
+
+        return builder.toString()
+    }
+
+    /**
+     * Format a property as YAML with proper indentation.
+     */
+    private fun formatYamlProperty(key: String, value: Any?, indent: Int): String {
+        val indentStr = "  ".repeat(indent)
+        return when (value) {
+            null -> ""
+            is String -> "$indentStr$key: \"$value\""
+            is Number, is Boolean -> "$indentStr$key: $value"
+            is List<*> -> {
+                if (value.isEmpty()) {
+                    "$indentStr$key: []"
+                } else {
+                    val items = value.joinToString("\n") { item ->
+                        "${indentStr}  - ${formatValue(item)}"
+                    }
+                    "$indentStr$key:\n$items"
+                }
+            }
+            is Map<*, *> -> {
+                if (value.isEmpty()) {
+                    "$indentStr$key: {}"
+                } else {
+                    val entries = value.entries.joinToString("\n") { (k, v) ->
+                        formatYamlProperty(k.toString(), v, indent + 1)
+                    }
+                    "$indentStr$key:\n$entries"
+                }
+            }
+            else -> "$indentStr$key: $value"
+        }
+    }
+
+    /**
+     * Format a value for YAML output.
+     */
+    private fun formatValue(value: Any?): String {
+        return when (value) {
+            null -> "null"
+            is String -> "\"$value\""
+            else -> value.toString()
+        }
+    }
+
+    /**
+     * Get the config filename from @ConfigFile annotation or class name.
+     */
+    private fun getFileName(klass: KClass<*>): String {
+        return klass.findAnnotation<ConfigFile>()?.value
+            ?: klass.simpleName?.removeSuffix("Config")?.lowercase()
+            ?: "config"
+    }
+}
