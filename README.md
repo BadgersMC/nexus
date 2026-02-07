@@ -1,32 +1,31 @@
-# Nexus - Dependency Injection & Configuration for Hytale
+# Nexus - Application Framework for Hytale
 
-**Nexus** is a lightweight, Kotlin-first framework for Hytale mods providing dependency injection, configuration management, and coroutine infrastructure. Inspired by Spring Framework, Nexus offers familiar annotations and patterns while remaining simple and performant.
+**Nexus** is a Kotlin-first application framework for Hytale mods providing automatic dependency injection with classpath scanning, YAML configuration management, and coroutine infrastructure backed by Java 21 virtual threads.
 
 ## Features
 
-### Dependency Injection
-- **Annotation-based DI**: Use `@Component`, `@Service`, `@Repository` to mark managed beans
-- **Constructor Injection**: Automatic dependency resolution through primary constructors
+### Dependency Injection with Classpath Scanning
+- **Automatic Component Discovery**: Annotate classes with `@Component`, `@Service`, or `@Repository` and they're found at startup via [ClassGraph](https://github.com/classgraph/classgraph) - no registration lists to maintain
+- **Constructor Injection**: Dependencies resolved automatically through primary constructors
 - **Lifecycle Management**: `@PostConstruct` and `@PreDestroy` hooks (supports suspend functions)
-- **Scopes**: Singleton (default) and Prototype scopes
-- **Polymorphic Resolution**: Beans can be resolved by their interface or superclass type
-- **Type-safe**: Leverages Kotlin's type system for compile-time safety
-- **Thread-safe**: Built with concurrent access in mind
+- **Scopes**: Singleton (default) and Prototype scopes via `@Scope`
+- **Polymorphic Resolution**: Beans resolved by interface or superclass type
+- **Qualifier Support**: `@Qualifier("name")` to disambiguate multiple beans of the same type
+- **Thread-safe**: Concurrent access with double-check locking for singletons
 
 ### Coroutine Infrastructure
 - **Virtual Thread Dispatchers**: Java 21 virtual threads with automatic classloader propagation
 - **Per-Plugin Scopes**: Each plugin gets its own `CoroutineScope` with `SupervisorJob`
-- **Injectable**: Scope and dispatchers are auto-registered as beans for DI
-- **Lifecycle-Managed**: Scopes are automatically cancelled on context shutdown
+- **Injectable**: Scope and dispatchers are auto-registered as beans
+- **Lifecycle-Managed**: Scopes cancelled automatically on context shutdown
 - **Shared Utilities**: `withIO` and `withDefault` dispatcher helpers
 
 ### Configuration System
-- **YAML Format**: Human-friendly config files with comments
-- **Annotation-based**: `@ConfigFile`, `@ConfigName`, `@Comment` annotations
-- **Type-safe Loading**: Automatic type conversion and validation
-- **Nested Objects**: Full support for hierarchical configurations
-- **Hot Reload**: Reload configs without restarting
-- **Reflection-based**: Automatic field mapping
+- **YAML Format**: Human-friendly config files with comment preservation
+- **Annotation-based**: `@ConfigFile`, `@ConfigName`, `@Comment`, `@Transient`
+- **Type-safe Loading**: Automatic type conversion for primitives, collections, nested objects
+- **Hot Reload**: Reload configs at runtime without restarting
+- **Centralized Management**: `ConfigManager` for loading, saving, and caching all configs
 
 ## Quick Start
 
@@ -34,7 +33,7 @@
 
 ```kotlin
 dependencies {
-    implementation("net.badgersmc:nexus:1.2.0")
+    implementation("net.badgersmc:nexus:1.3.0")
 }
 ```
 
@@ -43,8 +42,8 @@ dependencies {
 ```kotlin
 @Repository
 class PlayerRepository(private val storage: Storage) {
-    fun findPlayer(id: UUID): Player? {
-        // ...
+    suspend fun findPlayer(id: UUID): Player? = withIO {
+        // database query
     }
 }
 
@@ -55,7 +54,7 @@ class PlayerService(private val repository: PlayerRepository) {
         println("PlayerService initialized!")
     }
 
-    fun getPlayer(id: UUID): Player? {
+    suspend fun getPlayer(id: UUID): Player? {
         return repository.findPlayer(id)
     }
 }
@@ -64,21 +63,25 @@ class PlayerService(private val repository: PlayerRepository) {
 ### 3. Create a Nexus context
 
 ```kotlin
+// Nexus scans net.example.mymod and all sub-packages for annotated classes
 val context = NexusContext.create(
-    basePackage = "com.example.mymod",
-    classes = listOf(PlayerService::class, PlayerRepository::class),
+    basePackage = "net.example.mymod",
     classLoader = this::class.java.classLoader,
     contextName = "MyPlugin"
 )
 
-val playerService = context.getBean<PlayerService>()
+// Register any beans created outside the container
+context.registerBean("storage", Storage::class, storage)
 
-// Use your service
+// Retrieve auto-discovered beans
+val playerService = context.getBean<PlayerService>()
 val player = playerService.getPlayer(playerId)
 
 // Cleanup when done
 context.close()
 ```
+
+That's it. Add a new `@Service` or `@Repository` class anywhere under your base package and it's automatically available for injection on next startup.
 
 ## Coroutine Infrastructure
 
@@ -91,13 +94,6 @@ Java 21 virtual threads inherit the system classloader, not the plugin's. When a
 ### Launching coroutines
 
 ```kotlin
-val context = NexusContext.create(
-    basePackage = "com.example.mymod",
-    classes = components,
-    classLoader = this::class.java.classLoader,
-    contextName = "MyPlugin"
-)
-
 // Launch coroutines on virtual threads with correct classloader
 context.scope!!.launch {
     val data = withIO { database.query("SELECT ...") }
@@ -114,7 +110,7 @@ The `CoroutineScope` and `NexusDispatchers` are registered as beans, so any comp
 class MyService(private val scope: CoroutineScope) {
     fun doAsyncWork() {
         scope.launch {
-            // runs on virtual threads
+            // runs on virtual threads with correct classloader
         }
     }
 }
@@ -148,52 +144,9 @@ When `context.close()` is called, Nexus shuts down in order:
 3. Shutdown the virtual thread executor
 4. Clear the bean registry
 
-### No classloader? No problem
+## Configuration System
 
-If you don't pass a `classLoader`, Nexus works exactly as before — `scope` and `dispatchers` will be `null`, and no coroutine infrastructure is created. Fully backward compatible.
-
-## Annotations
-
-### Component Annotations
-- `@Component` - Generic managed component
-- `@Service` - Service layer component
-- `@Repository` - Data access layer component
-
-### Dependency Injection
-- `@Inject` - Mark injection points (optional for constructors)
-- `@Qualifier("name")` - Disambiguate between multiple beans
-
-### Lifecycle
-- `@PostConstruct` - Called after dependency injection
-- `@PreDestroy` - Called before container shutdown
-
-### Scoping
-- `@Scope(ScopeType.SINGLETON)` - One instance per container (default)
-- `@Scope(ScopeType.PROTOTYPE)` - New instance per injection
-
-## Advanced Usage
-
-### Manual Bean Registration
-
-```kotlin
-val context = NexusContext.create()
-val myBean = MyCustomBean()
-context.registerBean("myBean", MyCustomBean::class, myBean)
-```
-
-### Qualified Dependencies
-
-```kotlin
-@Service
-class DataService(
-    @Qualifier("primaryDatabase") val primary: Database,
-    @Qualifier("cacheDatabase") val cache: Database
-)
-```
-
-## Configuration System Usage
-
-### Define Config Class
+### Define a config class
 
 ```kotlin
 @ConfigFile("mymod")
@@ -216,18 +169,13 @@ class MyModConfig {
 }
 ```
 
-### Load and Use
+### Load and use
 
 ```kotlin
-// Initialize config manager
-val configManager = ConfigManager(Paths.get("config"))
+val configManager = ConfigManager(dataDirectory)
 
-// Load config (creates mymod.yaml if missing)
+// Load config (creates mymod.yaml with defaults if missing)
 val config = configManager.load<MyModConfig>()
-
-// Use values
-println("Debug: ${config.debug}")
-println("Max players: ${config.maxPlayers}")
 
 // Modify and save
 config.debug = true
@@ -237,7 +185,7 @@ configManager.save(config)
 configManager.reload<MyModConfig>()
 ```
 
-### Generated YAML File
+### Generated YAML
 
 ```yaml
 # My Mod Configuration
@@ -254,31 +202,105 @@ database:
   port: 3306
 ```
 
+## Annotations Reference
+
+### Component Discovery
+| Annotation | Target | Description |
+|---|---|---|
+| `@Component` | Class | Generic managed component |
+| `@Service` | Class | Service layer component |
+| `@Repository` | Class | Data access layer component |
+
+### Dependency Injection
+| Annotation | Target | Description |
+|---|---|---|
+| `@Inject` | Constructor, field, param | Mark injection points (optional for constructors) |
+| `@Qualifier("name")` | Parameter | Disambiguate between multiple beans of same type |
+
+### Lifecycle
+| Annotation | Target | Description |
+|---|---|---|
+| `@PostConstruct` | Function | Called after dependency injection (supports suspend) |
+| `@PreDestroy` | Function | Called before container shutdown (supports suspend) |
+| `@Scope(ScopeType)` | Class | SINGLETON (default) or PROTOTYPE |
+
+### Configuration
+| Annotation | Target | Description |
+|---|---|---|
+| `@ConfigFile("name")` | Class | Maps class to `name.yaml` |
+| `@ConfigName("key")` | Property | Custom YAML key name |
+| `@Comment("text")` | Class, property | YAML comment above the field |
+| `@Transient` | Property | Excluded from save/load |
+
+## Advanced Usage
+
+### Manual bean registration
+
+For beans created outside the container (database connections, plugin instances, configs):
+
+```kotlin
+val context = NexusContext.create(
+    basePackage = "net.example.mymod",
+    classLoader = this::class.java.classLoader
+)
+
+// These are available for injection into scanned components
+context.registerBean("storage", Storage::class, storage)
+context.registerBean("config", MyConfig::class, config)
+```
+
+Bean factories use lazy resolution, so manually registered beans are available even when registered after `create()`.
+
+### Manual-only mode
+
+If you don't need classpath scanning:
+
+```kotlin
+val context = NexusContext.create()
+context.registerBean("myBean", MyBean::class, MyBean())
+```
+
+### Shadow JAR relocation
+
+When shading Nexus into your plugin, relocate ClassGraph as well:
+
+```kotlin
+tasks.shadowJar {
+    relocate("net.badgersmc.nexus", "com.example.mymod.shaded.nexus")
+    relocate("io.github.classgraph", "com.example.mymod.shaded.classgraph")
+    relocate("nonapi.io.github.classgraph", "com.example.mymod.shaded.nonapi.classgraph")
+}
+```
+
 ## Architecture
 
-Nexus consists of three core systems:
+```
+nexus/
+├── core/
+│   ├── NexusContext          Main container — creates context, manages lifecycle
+│   ├── ComponentRegistry     Bean definitions + singleton cache, polymorphic type indexing
+│   ├── BeanFactory           Constructor injection, PostConstruct/PreDestroy invocation
+│   └── BeanDefinition        Bean metadata (name, type, scope, factory)
+├── scanning/
+│   └── ComponentScanner      ClassGraph-based classpath scanning
+├── annotations/
+│   ├── @Component, @Service, @Repository
+│   ├── @Inject, @Qualifier, @Scope
+│   └── @PostConstruct, @PreDestroy
+├── coroutines/
+│   ├── NexusDispatchers      Virtual thread executor + classloader propagation
+│   ├── NexusScope            Per-plugin CoroutineScope with SupervisorJob
+│   └── CoroutineExtensions   withIO, withDefault helpers
+└── config/
+    ├── ConfigManager          Centralized config loading, saving, caching
+    ├── ConfigLoader           YAML serialization with reflection
+    └── @ConfigFile, @ConfigName, @Comment, @Transient
+```
 
-**Dependency Injection:**
+## Requirements
 
-1. **NexusContext** - Main container managing the lifecycle
-2. **ComponentRegistry** - Stores bean definitions and instances (with polymorphic type indexing)
-3. **BeanFactory** - Creates and injects dependencies
-4. **ComponentScanner** - Discovers annotated classes
-
-**Coroutines:**
-
-5. **NexusDispatchers** - Virtual thread executor with classloader propagation
-6. **NexusScope** - Per-plugin CoroutineScope with SupervisorJob
-
-**Configuration:**
-
-7. **ConfigManager** - Centralized config management
-8. **ConfigLoader** - Loads/saves YAML files with reflection
-9. **Config Annotations** - @ConfigFile, @ConfigName, @Comment, @Transient
-
-## Why Nexus?
-
-Nexus connects your components together - like a nexus point in a network. It's lightweight, Kotlin-native, and designed specifically for Hytale's plugin ecosystem.
+- Java 21+ (for virtual threads)
+- Kotlin 2.0+
 
 ## License
 
