@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "net.badgersmc"
-version = "1.1.0"
+version = "1.2.0"
 
 repositories {
     mavenCentral()
@@ -16,6 +16,9 @@ dependencies {
     implementation(kotlin("stdlib"))
     implementation(kotlin("reflect"))
 
+    // Kotlin Coroutines
+    api("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0")
+
     // Logging
     implementation("org.slf4j:slf4j-api:2.0.9")
 
@@ -25,6 +28,7 @@ dependencies {
     // Testing
     testImplementation(kotlin("test"))
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.0")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.0")
     testImplementation("org.slf4j:slf4j-simple:2.0.9")
 }
 

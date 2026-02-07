@@ -1,26 +1,67 @@
 package net.badgersmc.nexus.core
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.cancel
 import net.badgersmc.nexus.annotations.ScopeType
+import net.badgersmc.nexus.coroutines.NexusDispatchers
+import net.badgersmc.nexus.coroutines.createNexusScope
 import net.badgersmc.nexus.scanning.ComponentScanner
 import kotlin.reflect.KClass
 
 /**
  * Main Nexus dependency injection container.
- * Manages component lifecycle, dependency resolution, and bean creation.
+ * Manages component lifecycle, dependency resolution, bean creation,
+ * and optional coroutine infrastructure.
  */
-class NexusContext private constructor() {
+class NexusContext private constructor(
+    private val classLoader: ClassLoader?,
+    private val contextName: String
+) {
 
     private val registry = ComponentRegistry()
     private val factory = BeanFactory(registry)
     private val scanner = ComponentScanner()
     private var initialized = false
 
+    /**
+     * Coroutine dispatchers backed by virtual threads.
+     * Only available if a classLoader was provided at creation time.
+     */
+    val dispatchers: NexusDispatchers? = classLoader?.let {
+        NexusDispatchers(it, contextName)
+    }
+
+    /**
+     * Plugin-scoped CoroutineScope using SupervisorJob and virtual threads.
+     * Only available if a classLoader was provided at creation time.
+     *
+     * All plugin coroutines should be launched in this scope to ensure:
+     * - Automatic cancellation on context close
+     * - Structured concurrency with SupervisorJob
+     * - Correct classloader propagation to virtual threads
+     */
+    val scope: CoroutineScope? = dispatchers?.let {
+        createNexusScope(it, contextName)
+    }
+
     companion object {
         /**
          * Create a new NexusContext by scanning for components.
+         *
+         * @param basePackage Base package for component scanning
+         * @param classes List of classes to register
+         * @param classLoader The plugin's classloader for virtual thread propagation.
+         *                    If null, coroutine infrastructure is not created.
+         * @param contextName Name for the context (used in thread names and coroutine debugging).
          */
-        fun create(basePackage: String, classes: List<KClass<*>>): NexusContext {
-            val context = NexusContext()
+        fun create(
+            basePackage: String,
+            classes: List<KClass<*>>,
+            classLoader: ClassLoader? = null,
+            contextName: String = "nexus"
+        ): NexusContext {
+            val context = NexusContext(classLoader, contextName)
+            context.registerCoroutineBeans()
             context.initialize(basePackage, classes)
             return context
         }
@@ -28,8 +69,25 @@ class NexusContext private constructor() {
         /**
          * Create a new NexusContext with manual bean registration.
          */
-        fun create(): NexusContext {
-            return NexusContext()
+        fun create(
+            classLoader: ClassLoader? = null,
+            contextName: String = "nexus"
+        ): NexusContext {
+            val context = NexusContext(classLoader, contextName)
+            context.registerCoroutineBeans()
+            return context
+        }
+    }
+
+    /**
+     * Register the coroutine scope and dispatchers as injectable beans.
+     */
+    private fun registerCoroutineBeans() {
+        dispatchers?.let { d ->
+            registerBean("nexusDispatchers", NexusDispatchers::class, d)
+        }
+        scope?.let { s ->
+            registerBean("nexusScope", CoroutineScope::class, s)
         }
     }
 
@@ -125,12 +183,23 @@ class NexusContext private constructor() {
     }
 
     /**
-     * Shutdown the context and invoke @PreDestroy methods.
+     * Shutdown the context.
+     *
+     * Order of operations:
+     * 1. Cancel the coroutine scope (stops all running coroutines)
+     * 2. Invoke @PreDestroy on all singletons
+     * 3. Shutdown the virtual thread executor
+     * 4. Clear the registry
      */
     fun close() {
+        scope?.cancel("NexusContext closing")
+
         registry.getAllSingletons().forEach { bean ->
             factory.invokePreDestroy(bean)
         }
+
+        dispatchers?.shutdown()
+
         registry.clear()
         initialized = false
     }

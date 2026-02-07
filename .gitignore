@@ -87,3 +87,7 @@ replay_pid*
 # Test output
 test-output/
 test-results/
+
+#Sensitive tokens and keys
+gradle.properties
+local.properties

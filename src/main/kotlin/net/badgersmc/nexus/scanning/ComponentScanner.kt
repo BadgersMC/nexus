@@ -23,19 +23,19 @@ class ComponentScanner {
             val serviceAnnotation = klass.findAnnotation<Service>()
             val repositoryAnnotation = klass.findAnnotation<Repository>()
 
-            if (componentAnnotation != null || serviceAnnotation != null || repositoryAnnotation != null) {
-                val beanName = determineBeanName(klass, componentAnnotation, serviceAnnotation, repositoryAnnotation)
-                val scope = klass.findAnnotation<Scope>()?.value ?: ScopeType.SINGLETON
+            // Classes explicitly provided in the list are always registered as components,
+            // even without annotations. Annotations are used for bean name and scope overrides.
+            val beanName = determineBeanName(klass, componentAnnotation, serviceAnnotation, repositoryAnnotation)
+            val scope = klass.findAnnotation<Scope>()?.value ?: ScopeType.SINGLETON
 
-                definitions.add(
-                    BeanDefinition(
-                        name = beanName,
-                        type = klass,
-                        scope = scope,
-                        factory = { klass.objectInstance ?: throw IllegalStateException("Factory will be set by context") }
-                    )
+            definitions.add(
+                BeanDefinition(
+                    name = beanName,
+                    type = klass,
+                    scope = scope,
+                    factory = { klass.objectInstance ?: throw IllegalStateException("Factory will be set by context") }
                 )
-            }
+            )
         }
 
         return definitions

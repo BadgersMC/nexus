@@ -1,8 +1,10 @@
 package net.badgersmc.nexus.core
 
+import kotlinx.coroutines.runBlocking
 import net.badgersmc.nexus.annotations.*
 import kotlin.reflect.KClass
-import kotlin.reflect.full.createInstance
+import kotlin.reflect.KFunction
+import kotlin.reflect.full.callSuspend
 import kotlin.reflect.full.findAnnotation
 import kotlin.reflect.full.functions
 import kotlin.reflect.full.primaryConstructor
@@ -82,13 +84,14 @@ class BeanFactory(
 
     /**
      * Invoke @PostConstruct methods on a bean.
+     * Supports both regular and suspend functions.
      */
     private fun invokePostConstruct(bean: Any) {
         bean::class.functions
             .filter { it.findAnnotation<PostConstruct>() != null }
             .forEach { method ->
                 try {
-                    method.call(bean)
+                    invokeLifecycleMethod(bean, method)
                 } catch (e: Exception) {
                     throw NexusException("Failed to invoke @PostConstruct on ${bean::class.simpleName}", e)
                 }
@@ -97,18 +100,33 @@ class BeanFactory(
 
     /**
      * Invoke @PreDestroy methods on a bean.
+     * Supports both regular and suspend functions.
      */
     fun invokePreDestroy(bean: Any) {
         bean::class.functions
             .filter { it.findAnnotation<PreDestroy>() != null }
             .forEach { method ->
                 try {
-                    method.call(bean)
+                    invokeLifecycleMethod(bean, method)
                 } catch (e: Exception) {
                     // Log but don't throw during shutdown
                     System.err.println("Failed to invoke @PreDestroy on ${bean::class.simpleName}: ${e.message}")
                 }
             }
+    }
+
+    /**
+     * Invoke a lifecycle method, handling both regular and suspend functions.
+     * Suspend functions are bridged using runBlocking.
+     */
+    private fun invokeLifecycleMethod(bean: Any, method: KFunction<*>) {
+        if (method.isSuspend) {
+            runBlocking {
+                method.callSuspend(bean)
+            }
+        } else {
+            method.call(bean)
+        }
     }
 
     /**

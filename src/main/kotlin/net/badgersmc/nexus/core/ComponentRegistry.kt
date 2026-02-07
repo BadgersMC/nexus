@@ -20,8 +20,21 @@ class ComponentRegistry {
     fun register(definition: BeanDefinition) {
         definitions[definition.name] = definition
 
-        // Index by type for lookup
+        // Index by concrete type for lookup
         typeIndex.computeIfAbsent(definition.type) { mutableListOf() }.add(definition.name)
+
+        // Also index by all interfaces the class implements,
+        // so beans can be resolved by their interface type (e.g. PlaytimeSessionRepository)
+        for (iface in definition.type.java.interfaces) {
+            val ifaceKClass = iface.kotlin
+            typeIndex.computeIfAbsent(ifaceKClass) { mutableListOf() }.add(definition.name)
+        }
+
+        // Also index by superclass (if not Any/Object)
+        val superclass = definition.type.java.superclass
+        if (superclass != null && superclass != Any::class.java && superclass != Object::class.java) {
+            typeIndex.computeIfAbsent(superclass.kotlin) { mutableListOf() }.add(definition.name)
+        }
     }
 
     /**
