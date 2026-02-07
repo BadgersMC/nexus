@@ -1,16 +1,24 @@
 # Nexus - Dependency Injection & Configuration for Hytale
 
-**Nexus** is a lightweight, Kotlin-first framework for Hytale mods providing dependency injection and configuration management. Inspired by Spring Framework, Nexus offers familiar annotations and patterns while remaining simple and performant.
+**Nexus** is a lightweight, Kotlin-first framework for Hytale mods providing dependency injection, configuration management, and coroutine infrastructure. Inspired by Spring Framework, Nexus offers familiar annotations and patterns while remaining simple and performant.
 
 ## Features
 
 ### Dependency Injection
 - **Annotation-based DI**: Use `@Component`, `@Service`, `@Repository` to mark managed beans
 - **Constructor Injection**: Automatic dependency resolution through primary constructors
-- **Lifecycle Management**: `@PostConstruct` and `@PreDestroy` hooks
+- **Lifecycle Management**: `@PostConstruct` and `@PreDestroy` hooks (supports suspend functions)
 - **Scopes**: Singleton (default) and Prototype scopes
+- **Polymorphic Resolution**: Beans can be resolved by their interface or superclass type
 - **Type-safe**: Leverages Kotlin's type system for compile-time safety
 - **Thread-safe**: Built with concurrent access in mind
+
+### Coroutine Infrastructure
+- **Virtual Thread Dispatchers**: Java 21 virtual threads with automatic classloader propagation
+- **Per-Plugin Scopes**: Each plugin gets its own `CoroutineScope` with `SupervisorJob`
+- **Injectable**: Scope and dispatchers are auto-registered as beans for DI
+- **Lifecycle-Managed**: Scopes are automatically cancelled on context shutdown
+- **Shared Utilities**: `withIO` and `withDefault` dispatcher helpers
 
 ### Configuration System
 - **YAML Format**: Human-friendly config files with comments
@@ -26,7 +34,7 @@
 
 ```kotlin
 dependencies {
-    implementation("net.badgersmc:nexus:1.1.0")
+    implementation("net.badgersmc:nexus:1.2.0")
 }
 ```
 
@@ -56,21 +64,93 @@ class PlayerService(private val repository: PlayerRepository) {
 ### 3. Create a Nexus context
 
 ```kotlin
-fun main() {
-    val context = NexusContext.create(
-        basePackage = "com.example.mymod",
-        classes = listOf(PlayerService::class, PlayerRepository::class)
-    )
+val context = NexusContext.create(
+    basePackage = "com.example.mymod",
+    classes = listOf(PlayerService::class, PlayerRepository::class),
+    classLoader = this::class.java.classLoader,
+    contextName = "MyPlugin"
+)
 
-    val playerService = context.getBean<PlayerService>()
+val playerService = context.getBean<PlayerService>()
 
-    // Use your service
-    val player = playerService.getPlayer(playerId)
+// Use your service
+val player = playerService.getPlayer(playerId)
 
-    // Cleanup when done
-    context.close()
+// Cleanup when done
+context.close()
+```
+
+## Coroutine Infrastructure
+
+Nexus provides centralized coroutine support backed by Java 21 virtual threads. When you pass a `classLoader` to `NexusContext.create()`, Nexus automatically creates a virtual thread executor, coroutine dispatcher, and plugin-scoped `CoroutineScope`.
+
+### Why this matters
+
+Java 21 virtual threads inherit the system classloader, not the plugin's. When a coroutine continuation tries to load a plugin class on a virtual thread, it fails. Nexus wraps every virtual thread task to propagate the correct classloader automatically.
+
+### Launching coroutines
+
+```kotlin
+val context = NexusContext.create(
+    basePackage = "com.example.mymod",
+    classes = components,
+    classLoader = this::class.java.classLoader,
+    contextName = "MyPlugin"
+)
+
+// Launch coroutines on virtual threads with correct classloader
+context.scope!!.launch {
+    val data = withIO { database.query("SELECT ...") }
+    processData(data)
 }
 ```
+
+### Injecting the scope into components
+
+The `CoroutineScope` and `NexusDispatchers` are registered as beans, so any component can receive them via constructor injection:
+
+```kotlin
+@Service
+class MyService(private val scope: CoroutineScope) {
+    fun doAsyncWork() {
+        scope.launch {
+            // runs on virtual threads
+        }
+    }
+}
+```
+
+### Suspend lifecycle methods
+
+`@PostConstruct` and `@PreDestroy` methods can be suspend functions:
+
+```kotlin
+@Service
+class CacheService {
+    @PostConstruct
+    suspend fun warmUp() {
+        // async initialization
+    }
+
+    @PreDestroy
+    suspend fun flush() {
+        // async cleanup
+    }
+}
+```
+
+### Shutdown lifecycle
+
+When `context.close()` is called, Nexus shuts down in order:
+
+1. Cancel the coroutine scope (stops all running coroutines)
+2. Invoke `@PreDestroy` on all singletons
+3. Shutdown the virtual thread executor
+4. Clear the bean registry
+
+### No classloader? No problem
+
+If you don't pass a `classLoader`, Nexus works exactly as before — `scope` and `dispatchers` will be `null`, and no coroutine infrastructure is created. Fully backward compatible.
 
 ## Annotations
 
@@ -176,20 +256,25 @@ database:
 
 ## Architecture
 
-Nexus consists of seven core components:
+Nexus consists of three core systems:
 
 **Dependency Injection:**
 
 1. **NexusContext** - Main container managing the lifecycle
-2. **ComponentRegistry** - Stores bean definitions and instances
+2. **ComponentRegistry** - Stores bean definitions and instances (with polymorphic type indexing)
 3. **BeanFactory** - Creates and injects dependencies
 4. **ComponentScanner** - Discovers annotated classes
 
+**Coroutines:**
+
+5. **NexusDispatchers** - Virtual thread executor with classloader propagation
+6. **NexusScope** - Per-plugin CoroutineScope with SupervisorJob
+
 **Configuration:**
 
-5. **ConfigManager** - Centralized config management
-6. **ConfigLoader** - Loads/saves YAML files with reflection
-7. **Config Annotations** - @ConfigFile, @ConfigName, @Comment, @Transient
+7. **ConfigManager** - Centralized config management
+8. **ConfigLoader** - Loads/saves YAML files with reflection
+9. **Config Annotations** - @ConfigFile, @ConfigName, @Comment, @Transient
 
 ## Why Nexus?
 
@@ -198,4 +283,3 @@ Nexus connects your components together - like a nexus point in a network. It's 
 ## License
 
 MIT License - See LICENSE file for details
-
