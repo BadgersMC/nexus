@@ -46,28 +46,29 @@ class NexusContext private constructor(
 
     companion object {
         /**
-         * Create a new NexusContext by scanning for components.
+         * Create a new NexusContext by scanning the classpath for annotated components.
          *
-         * @param basePackage Base package for component scanning
-         * @param classes List of classes to register
-         * @param classLoader The plugin's classloader for virtual thread propagation.
-         *                    If null, coroutine infrastructure is not created.
-         * @param contextName Name for the context (used in thread names and coroutine debugging).
+         * Discovers all classes in [basePackage] (and sub-packages) annotated with
+         * @Component, @Service, or @Repository using ClassGraph.
+         *
+         * @param basePackage Base package to scan for components
+         * @param classLoader The classloader to scan (required — typically the plugin's classloader)
+         * @param contextName Name for the context (used in thread names and coroutine debugging)
          */
         fun create(
             basePackage: String,
-            classes: List<KClass<*>>,
-            classLoader: ClassLoader? = null,
+            classLoader: ClassLoader,
             contextName: String = "nexus"
         ): NexusContext {
             val context = NexusContext(classLoader, contextName)
             context.registerCoroutineBeans()
-            context.initialize(basePackage, classes)
+            context.initialize(basePackage, classLoader)
             return context
         }
 
         /**
-         * Create a new NexusContext with manual bean registration.
+         * Create a new NexusContext with manual bean registration only.
+         * Use [registerBean] to add beans after creation.
          */
         fun create(
             classLoader: ClassLoader? = null,
@@ -92,17 +93,17 @@ class NexusContext private constructor(
     }
 
     /**
-     * Initialize the context by scanning for components.
+     * Initialize the context by scanning the classpath for annotated components.
      */
-    private fun initialize(basePackage: String, classes: List<KClass<*>>) {
+    private fun initialize(basePackage: String, classLoader: ClassLoader) {
         if (initialized) {
             throw IllegalStateException("Context already initialized")
         }
 
-        // Scan for component definitions
-        val definitions = scanner.scan(basePackage, classes)
+        // Scan classpath for annotated component definitions
+        val definitions = scanner.scan(basePackage, classLoader)
 
-        // Register all definitions (but don't create instances yet)
+        // Register all definitions (but don't create instances yet — factories are lazy)
         definitions.forEach { definition ->
             val updatedDefinition = definition.copy(
                 factory = factory.createFactory(definition.type)
@@ -206,7 +207,7 @@ class NexusContext private constructor(
 
     private fun ensureInitialized() {
         if (!initialized && registry.getAllBeanNames().isEmpty()) {
-            throw IllegalStateException("Context not initialized. Call initialize() or register beans manually.")
+            throw IllegalStateException("Context not initialized. Call create() or register beans manually.")
         }
         initialized = true
     }

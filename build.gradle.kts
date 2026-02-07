@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "net.badgersmc"
-version = "1.2.0"
+version = "1.3.0"
 
 repositories {
     mavenCentral()
@@ -21,6 +21,9 @@ dependencies {
 
     // Logging
     implementation("org.slf4j:slf4j-api:2.0.9")
+
+    // Classpath Scanning
+    implementation("io.github.classgraph:classgraph:4.8.174")
 
     // Configuration (YAML)
     implementation("com.charleskorn.kaml:kaml:0.59.0")

@@ -111,8 +111,7 @@ class CoroutineTest {
     fun `should handle suspend PostConstruct and PreDestroy`() {
         val context = NexusContext.create(
             "net.badgersmc.nexus.coroutines",
-            listOf(SuspendLifecycleBean::class),
-            classLoader = this::class.java.classLoader,
+            this::class.java.classLoader,
             contextName = "test"
         )
 

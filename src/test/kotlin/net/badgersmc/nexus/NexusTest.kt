@@ -1,6 +1,7 @@
 package net.badgersmc.nexus
 
 import net.badgersmc.nexus.annotations.*
+import net.badgersmc.nexus.core.BeanDefinition
 import net.badgersmc.nexus.core.NexusContext
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -12,7 +13,10 @@ class NexusTest {
 
     @Test
     fun `should create context and resolve singleton beans`() {
-        val context = NexusContext.create("net.badgersmc.nexus", listOf(TestService::class, TestRepository::class))
+        val context = NexusContext.create(
+            "net.badgersmc.nexus",
+            this::class.java.classLoader
+        )
 
         val service = context.getBean<TestService>()
         assertNotNull(service)
@@ -26,7 +30,10 @@ class NexusTest {
 
     @Test
     fun `should inject dependencies via constructor`() {
-        val context = NexusContext.create("net.badgersmc.nexus", listOf(TestService::class, TestRepository::class))
+        val context = NexusContext.create(
+            "net.badgersmc.nexus",
+            this::class.java.classLoader
+        )
 
         val service = context.getBean<TestService>()
         assertNotNull(service.repository)
@@ -36,7 +43,10 @@ class NexusTest {
 
     @Test
     fun `should invoke post construct`() {
-        val context = NexusContext.create("net.badgersmc.nexus", listOf(TestService::class, TestRepository::class))
+        val context = NexusContext.create(
+            "net.badgersmc.nexus",
+            this::class.java.classLoader
+        )
 
         val service = context.getBean<TestService>()
         assertTrue(service.initialized)
@@ -64,6 +74,67 @@ class NexusTest {
         assertThrows<Exception> {
             context.getBean<TestService>()
         }
+
+        context.close()
+    }
+
+    @Test
+    fun `should not discover classes outside base package`() {
+        val context = NexusContext.create(
+            "net.badgersmc.nexus.nonexistent",
+            this::class.java.classLoader
+        )
+
+        // No components in a non-existent package
+        assertThrows<Exception> {
+            context.getBean<TestService>()
+        }
+
+        context.close()
+    }
+
+    @Test
+    fun `should support manual beans alongside scanned beans`() {
+        val context = NexusContext.create(
+            "net.badgersmc.nexus",
+            this::class.java.classLoader
+        )
+
+        // Register a manual bean
+        context.registerBean("manualValue", String::class, "hello")
+
+        // Both scanned and manual beans should be accessible
+        val service = context.getBean<TestService>()
+        assertNotNull(service)
+        assertEquals("hello", context.getBean(String::class))
+
+        context.close()
+    }
+
+    @Test
+    fun `should only discover annotated classes`() {
+        val context = NexusContext.create(
+            "net.badgersmc.nexus",
+            this::class.java.classLoader
+        )
+
+        // BeanDefinition is in the scanned package but has no annotation — should not be discovered
+        assertThrows<Exception> {
+            context.getBean(BeanDefinition::class)
+        }
+
+        context.close()
+    }
+
+    @Test
+    fun `should use default bean name from class name`() {
+        val context = NexusContext.create(
+            "net.badgersmc.nexus",
+            this::class.java.classLoader
+        )
+
+        // TestRepository uses @Repository with no explicit name, so name defaults to "testRepository"
+        assertTrue(context.containsBean("testRepository"))
 
         context.close()
     }
