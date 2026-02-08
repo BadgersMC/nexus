@@ -24,6 +24,7 @@
 
 ### Configuration System
 
+- **Auto-Discovery**: `@ConfigFile` classes found by classpath scanning, loaded, and registered as injectable beans
 - **YAML Format**: Human-friendly config files with comment preservation
 - **Annotation-based**: `@ConfigFile`, `@ConfigName`, `@Comment`, `@Transient`
 - **Type-safe Loading**: Automatic type conversion for primitives, collections, nested objects
@@ -66,25 +67,27 @@ class PlayerService(private val repository: PlayerRepository) {
 ### 3. Create a Nexus context
 
 ```kotlin
-// Nexus scans net.example.mymod and all sub-packages for annotated classes
+// Nexus scans net.example.mymod and all sub-packages for annotated classes.
+// Passing configDirectory enables automatic @ConfigFile discovery and loading.
 val context = NexusContext.create(
     basePackage = "net.example.mymod",
     classLoader = this::class.java.classLoader,
+    configDirectory = dataDirectory,
     contextName = "MyPlugin"
 )
 
 // Register any beans created outside the container
 context.registerBean("storage", Storage::class, storage)
 
-// Retrieve auto-discovered beans
+// Retrieve auto-discovered beans — configs are injectable too
 val playerService = context.getBean<PlayerService>()
-val player = playerService.getPlayer(playerId)
+val config = context.getBean<MyModConfig>()
 
 // Cleanup when done
 context.close()
 ```
 
-That's it. Add a new `@Service` or `@Repository` class anywhere under your base package and it's automatically available for injection on next startup.
+That's it. Add a new `@Service`, `@Repository`, or `@ConfigFile` class anywhere under your base package and it's automatically available for injection on next startup.
 
 ## Coroutine Infrastructure
 
@@ -172,7 +175,29 @@ class MyModConfig {
 }
 ```
 
-### Load and use
+### Automatic discovery (recommended)
+
+When you pass `configDirectory` to `NexusContext.create()`, Nexus scans for all `@ConfigFile`-annotated classes, loads them (creating YAML files with defaults if missing), and registers them as singleton beans. Services can then inject configs directly:
+
+```kotlin
+@Service
+class GameService(private val config: MyModConfig) {
+    fun getMaxPlayers() = config.maxPlayers
+}
+```
+
+A `ConfigManager` bean is also registered automatically, so any service can inject it for runtime reloads:
+
+```kotlin
+@Service
+class AdminService(private val configManager: ConfigManager) {
+    fun reloadAll() = configManager.reloadAll()
+}
+```
+
+### Manual usage
+
+If you need config management without classpath scanning:
 
 ```kotlin
 val configManager = ConfigManager(dataDirectory)
@@ -243,20 +268,21 @@ database:
 
 ### Manual bean registration
 
-For beans created outside the container (database connections, plugin instances, configs):
+For beans created outside the container (database connections, plugin instances):
 
 ```kotlin
 val context = NexusContext.create(
     basePackage = "net.example.mymod",
-    classLoader = this::class.java.classLoader
+    classLoader = this::class.java.classLoader,
+    configDirectory = dataDirectory
 )
 
 // These are available for injection into scanned components
 context.registerBean("storage", Storage::class, storage)
-context.registerBean("config", MyConfig::class, config)
+context.registerBean("plugin", MyPlugin::class, this)
 ```
 
-Bean factories use lazy resolution, so manually registered beans are available even when registered after `create()`.
+Bean factories use lazy resolution, so manually registered beans are available even when registered after `create()`. Note that `@ConfigFile` classes no longer need manual registration — they're discovered and loaded automatically when `configDirectory` is provided.
 
 ### Manual-only mode
 
