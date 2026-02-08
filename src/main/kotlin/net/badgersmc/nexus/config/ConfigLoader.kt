@@ -161,9 +161,11 @@ class ConfigLoader(private val configDirectory: Path) {
                 when (value) {
                     null -> return@forEach
                     is String, is Number, is Boolean -> map[configName] = value
-                    is List<*> -> map[configName] = value
-                    is Set<*> -> map[configName] = value.toList()
-                    is Map<*, *> -> map[configName] = value
+                    is List<*> -> map[configName] = value.map { serializeValue(it) }
+                    is Set<*> -> map[configName] = value.map { serializeValue(it) }
+                    is Map<*, *> -> map[configName] = value.entries.associate { (k, v) ->
+                        k.toString() to serializeValue(v)
+                    }
                     else -> {
                         // Nested object
                         map[configName] = saveToMap(value)
@@ -175,6 +177,23 @@ class ConfigLoader(private val configDirectory: Path) {
         }
 
         return map
+    }
+
+    /**
+     * Recursively serialize a value for map storage.
+     * Primitives pass through; custom objects are converted to maps via saveToMap().
+     */
+    private fun serializeValue(value: Any?): Any? {
+        return when (value) {
+            null -> null
+            is String, is Number, is Boolean -> value
+            is List<*> -> value.map { serializeValue(it) }
+            is Set<*> -> value.map { serializeValue(it) }
+            is Map<*, *> -> value.entries.associate { (k, v) ->
+                k.toString() to serializeValue(v)
+            }
+            else -> saveToMap(value)
+        }
     }
 
     /**
@@ -225,9 +244,16 @@ class ConfigLoader(private val configDirectory: Path) {
             is List<*> -> {
                 if (value.isEmpty()) {
                     "$indentStr$key: []"
-                } else {
+                } else if (value.all { it is String || it is Number || it is Boolean }) {
+                    // Simple list — inline items
                     val items = value.joinToString("\n") { item ->
-                        "${indentStr}  - ${formatValue(item)}"
+                        "${indentStr}  - ${formatScalar(item)}"
+                    }
+                    "$indentStr$key:\n$items"
+                } else {
+                    // List of objects — each item is a map
+                    val items = value.joinToString("\n") { item ->
+                        formatListItem(item, indent + 1)
                     }
                     "$indentStr$key:\n$items"
                 }
@@ -247,13 +273,45 @@ class ConfigLoader(private val configDirectory: Path) {
     }
 
     /**
-     * Format a value for YAML output.
+     * Format a list item that may be a scalar or an object (map).
      */
-    private fun formatValue(value: Any?): String {
+    private fun formatListItem(value: Any?, indent: Int): String {
+        val indentStr = "  ".repeat(indent)
+        return when (value) {
+            null -> "${indentStr}- null"
+            is String -> "${indentStr}- \"$value\""
+            is Number, is Boolean -> "${indentStr}- $value"
+            is Map<*, *> -> {
+                val entries = value.entries.toList()
+                if (entries.isEmpty()) {
+                    "${indentStr}- {}"
+                } else {
+                    // First entry on the "- " line, rest indented
+                    val first = entries.first()
+                    val firstLine = "${indentStr}- ${first.key}: ${formatScalar(first.value)}"
+                    if (entries.size == 1) {
+                        firstLine
+                    } else {
+                        val rest = entries.drop(1).joinToString("\n") { (k, v) ->
+                            formatYamlProperty(k.toString(), v, indent + 1)
+                        }
+                        "$firstLine\n$rest"
+                    }
+                }
+            }
+            else -> "${indentStr}- $value"
+        }
+    }
+
+    /**
+     * Format a scalar value for inline YAML output.
+     */
+    private fun formatScalar(value: Any?): String {
         return when (value) {
             null -> "null"
             is String -> "\"$value\""
-            else -> value.toString()
+            is Number, is Boolean -> value.toString()
+            else -> "\"$value\""
         }
     }
 
