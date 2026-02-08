@@ -3,6 +3,7 @@ package net.badgersmc.nexus.scanning
 import io.github.classgraph.ClassGraph
 import io.github.classgraph.ClassInfo
 import net.badgersmc.nexus.annotations.*
+import net.badgersmc.nexus.config.ConfigFile
 import net.badgersmc.nexus.core.BeanDefinition
 import org.slf4j.LoggerFactory
 import kotlin.reflect.KClass
@@ -77,6 +78,41 @@ class ComponentScanner {
 
         logger.info("Classpath scan found {} components in package '{}'", definitions.size, basePackage)
         return definitions
+    }
+
+    /**
+     * Scan the classpath for classes annotated with @ConfigFile within the given package.
+     *
+     * Returns raw KClass references (not BeanDefinitions) since config classes
+     * are loaded via ConfigManager rather than created by BeanFactory.
+     *
+     * @param basePackage Base package to scan (e.g. "net.badgersmc.hycore")
+     * @param classLoader The classloader to scan
+     * @return List of KClass for each discovered @ConfigFile class
+     */
+    fun scanConfigFiles(basePackage: String, classLoader: ClassLoader): List<KClass<*>> {
+        logger.debug("Scanning classpath for @ConfigFile classes in package: {}", basePackage)
+
+        val configClasses = ClassGraph()
+            .acceptPackages(basePackage)
+            .addClassLoader(classLoader)
+            .enableAnnotationInfo()
+            .scan()
+            .use { scanResult ->
+                scanResult.getClassesWithAnnotation(ConfigFile::class.java.name)
+                    .filter { !it.isAbstract && !it.isInterface }
+                    .mapNotNull { classInfo ->
+                        try {
+                            classInfo.loadClass().kotlin
+                        } catch (e: Exception) {
+                            logger.warn("Failed to load @ConfigFile class: ${classInfo.name}", e)
+                            null
+                        }
+                    }
+            }
+
+        logger.info("Classpath scan found {} @ConfigFile classes in package '{}'", configClasses.size, basePackage)
+        return configClasses
     }
 
     private fun determineBeanName(

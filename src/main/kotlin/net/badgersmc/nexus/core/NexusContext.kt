@@ -3,9 +3,11 @@ package net.badgersmc.nexus.core
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancel
 import net.badgersmc.nexus.annotations.ScopeType
+import net.badgersmc.nexus.config.ConfigManager
 import net.badgersmc.nexus.coroutines.NexusDispatchers
 import net.badgersmc.nexus.coroutines.createNexusScope
 import net.badgersmc.nexus.scanning.ComponentScanner
+import java.nio.file.Path
 import kotlin.reflect.KClass
 
 /**
@@ -51,17 +53,25 @@ class NexusContext private constructor(
          * Discovers all classes in [basePackage] (and sub-packages) annotated with
          * @Component, @Service, or @Repository using ClassGraph.
          *
+         * If [configDirectory] is provided, also discovers @ConfigFile classes,
+         * loads them via ConfigManager, and registers them as singleton beans.
+         *
          * @param basePackage Base package to scan for components
          * @param classLoader The classloader to scan (required — typically the plugin's classloader)
+         * @param configDirectory Directory for config files (enables @ConfigFile auto-discovery)
          * @param contextName Name for the context (used in thread names and coroutine debugging)
          */
         fun create(
             basePackage: String,
             classLoader: ClassLoader,
+            configDirectory: Path? = null,
             contextName: String = "nexus"
         ): NexusContext {
             val context = NexusContext(classLoader, contextName)
             context.registerCoroutineBeans()
+            if (configDirectory != null) {
+                context.loadAndRegisterConfigs(basePackage, classLoader, configDirectory)
+            }
             context.initialize(basePackage, classLoader)
             return context
         }
@@ -89,6 +99,38 @@ class NexusContext private constructor(
         }
         scope?.let { s ->
             registerBean("nexusScope", CoroutineScope::class, s)
+        }
+    }
+
+    /**
+     * Scan for @ConfigFile classes, load them via ConfigManager, and register as beans.
+     *
+     * Called before initialize() so config beans are available for injection
+     * when component factories are resolved.
+     */
+    private fun loadAndRegisterConfigs(
+        basePackage: String,
+        classLoader: ClassLoader,
+        configDirectory: Path
+    ) {
+        val manager = ConfigManager(configDirectory)
+
+        // Register ConfigManager as a bean (so services can inject it for reload)
+        registerBean("configManager", ConfigManager::class, manager)
+
+        // Scan for @ConfigFile classes and load each one
+        val configClasses = scanner.scanConfigFiles(basePackage, classLoader)
+        for (configClass in configClasses) {
+            val instance = manager.load(configClass)
+            val beanName = configClass.simpleName!!.replaceFirstChar { it.lowercase() }
+            val definition = BeanDefinition(
+                name = beanName,
+                type = configClass,
+                scope = ScopeType.SINGLETON,
+                factory = { instance }
+            )
+            registry.register(definition)
+            registry.putSingleton(beanName, instance)
         }
     }
 

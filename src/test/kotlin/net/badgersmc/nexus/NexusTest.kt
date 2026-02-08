@@ -1,10 +1,14 @@
 package net.badgersmc.nexus
 
 import net.badgersmc.nexus.annotations.*
+import net.badgersmc.nexus.config.ConfigManager
+import net.badgersmc.nexus.config.TestConfig
 import net.badgersmc.nexus.core.BeanDefinition
 import net.badgersmc.nexus.core.NexusContext
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import org.junit.jupiter.api.io.TempDir
+import java.nio.file.Path
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -135,6 +139,50 @@ class NexusTest {
 
         // TestRepository uses @Repository with no explicit name, so name defaults to "testRepository"
         assertTrue(context.containsBean("testRepository"))
+
+        context.close()
+    }
+
+    @Test
+    fun `should auto-discover and register ConfigFile classes`(@TempDir tempDir: Path) {
+        val context = NexusContext.create(
+            basePackage = "net.badgersmc.nexus.config",
+            classLoader = this::class.java.classLoader,
+            configDirectory = tempDir,
+            contextName = "config-test"
+        )
+
+        // TestConfig has @ConfigFile("test") and lives in net.badgersmc.nexus.config
+        val config = context.getBean(TestConfig::class)
+        assertNotNull(config)
+        assertEquals("Test Server", config.serverName)
+
+        // ConfigManager should also be injectable
+        val manager = context.getBean(ConfigManager::class)
+        assertNotNull(manager)
+
+        // Config file should have been created with defaults
+        val configFile = tempDir.resolve("test.yaml").toFile()
+        assertTrue(configFile.exists())
+
+        context.close()
+    }
+
+    @Test
+    fun `should support config beans alongside component beans`(@TempDir tempDir: Path) {
+        val context = NexusContext.create(
+            basePackage = "net.badgersmc.nexus",
+            classLoader = this::class.java.classLoader,
+            configDirectory = tempDir,
+            contextName = "mixed-test"
+        )
+
+        // Both config and component beans should be resolvable
+        val config = context.getBean(TestConfig::class)
+        assertNotNull(config)
+
+        val service = context.getBean<TestService>()
+        assertNotNull(service)
 
         context.close()
     }
