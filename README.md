@@ -5,6 +5,7 @@
 ## Features
 
 ### Dependency Injection with Classpath Scanning
+
 - **Automatic Component Discovery**: Annotate classes with `@Component`, `@Service`, or `@Repository` and they're found at startup via [ClassGraph](https://github.com/classgraph/classgraph) - no registration lists to maintain
 - **Constructor Injection**: Dependencies resolved automatically through primary constructors
 - **Lifecycle Management**: `@PostConstruct` and `@PreDestroy` hooks (supports suspend functions)
@@ -14,6 +15,7 @@
 - **Thread-safe**: Concurrent access with double-check locking for singletons
 
 ### Coroutine Infrastructure
+
 - **Virtual Thread Dispatchers**: Java 21 virtual threads with automatic classloader propagation
 - **Per-Plugin Scopes**: Each plugin gets its own `CoroutineScope` with `SupervisorJob`
 - **Injectable**: Scope and dispatchers are auto-registered as beans
@@ -21,6 +23,7 @@
 - **Shared Utilities**: `withIO` and `withDefault` dispatcher helpers
 
 ### Configuration System
+
 - **YAML Format**: Human-friendly config files with comment preservation
 - **Annotation-based**: `@ConfigFile`, `@ConfigName`, `@Comment`, `@Transient`
 - **Type-safe Loading**: Automatic type conversion for primitives, collections, nested objects
@@ -33,7 +36,7 @@
 
 ```kotlin
 dependencies {
-    implementation("net.badgersmc:nexus:1.3.0")
+    implementation("net.badgersmc:nexus:1.4.0")
 }
 ```
 
@@ -205,6 +208,7 @@ database:
 ## Annotations Reference
 
 ### Component Discovery
+
 | Annotation | Target | Description |
 |---|---|---|
 | `@Component` | Class | Generic managed component |
@@ -212,12 +216,14 @@ database:
 | `@Repository` | Class | Data access layer component |
 
 ### Dependency Injection
+
 | Annotation | Target | Description |
 |---|---|---|
 | `@Inject` | Constructor, field, param | Mark injection points (optional for constructors) |
 | `@Qualifier("name")` | Parameter | Disambiguate between multiple beans of same type |
 
 ### Lifecycle
+
 | Annotation | Target | Description |
 |---|---|---|
 | `@PostConstruct` | Function | Called after dependency injection (supports suspend) |
@@ -225,6 +231,7 @@ database:
 | `@Scope(ScopeType)` | Class | SINGLETON (default) or PROTOTYPE |
 
 ### Configuration
+
 | Annotation | Target | Description |
 |---|---|---|
 | `@ConfigFile("name")` | Class | Maps class to `name.yaml` |
