@@ -1,6 +1,6 @@
 # Nexus - Application Framework for Hytale
 
-**Nexus** is a Kotlin-first application framework for Hytale mods providing automatic dependency injection with classpath scanning, YAML configuration management, and coroutine infrastructure backed by Java 21 virtual threads.
+**Nexus** is a Kotlin-first application framework for Hytale mods providing automatic dependency injection with classpath scanning, YAML configuration management, command auto-discovery, and coroutine infrastructure backed by Java 21 virtual threads.
 
 ## Features
 
@@ -31,13 +31,23 @@
 - **Hot Reload**: Reload configs at runtime without restarting
 - **Centralized Management**: `ConfigManager` for loading, saving, and caching all configs
 
+### Command Auto-Discovery (Beta)
+
+- **Annotation-based Commands**: `@Command` classes with `@Arg` parameters auto-discovered
+- **Type-safe Arguments**: Map Kotlin types to Hytale arguments via `ArgumentResolver`
+- **Dependency Injection**: Commands can inject services, configs, and other beans
+- **Fail-fast Validation**: Missing argument resolvers detected at startup, not runtime
+- **Suspend Support**: Command execute methods can be suspend functions
+- **Context Injection**: `@Context` parameters for CommandContext, World, Store, etc.
+- **Status**: AsyncCommand ✅ | PlayerCommand ✅ | TargetPlayerCommand ✅ | TargetEntityCommand ✅
+
 ## Quick Start
 
 ### 1. Add Nexus to your project
 
 ```kotlin
 dependencies {
-    implementation("net.badgersmc:nexus:1.4.0")
+    implementation("net.badgersmc:nexus:1.5.0")
 }
 ```
 
@@ -69,17 +79,19 @@ class PlayerService(private val repository: PlayerRepository) {
 ```kotlin
 // Nexus scans net.example.mymod and all sub-packages for annotated classes.
 // Passing configDirectory enables automatic @ConfigFile discovery and loading.
+// Passing commandRegistry enables automatic @Command discovery and registration.
 val context = NexusContext.create(
     basePackage = "net.example.mymod",
     classLoader = this::class.java.classLoader,
     configDirectory = dataDirectory,
+    commandRegistry = this.commandRegistry,  // Hytale's CommandRegistry
     contextName = "MyPlugin"
 )
 
 // Register any beans created outside the container
 context.registerBean("storage", Storage::class, storage)
 
-// Retrieve auto-discovered beans — configs are injectable too
+// Retrieve auto-discovered beans — configs and commands are injectable too
 val playerService = context.getBean<PlayerService>()
 val config = context.getBean<MyModConfig>()
 
@@ -149,6 +161,161 @@ When `context.close()` is called, Nexus shuts down in order:
 2. Invoke `@PreDestroy` on all singletons
 3. Shutdown the virtual thread executor
 4. Clear the bean registry
+
+## Command System (Beta)
+
+Nexus automatically discovers `@Command` annotated classes and registers them with Hytale's command system. Commands support dependency injection, type-safe arguments, and suspend functions.
+
+**Current Status:**
+- ✅ **AsyncCommand** - Background tasks (no world/entity access)
+- ✅ **PlayerCommand** - World-thread commands with full ECS access
+- ✅ **TargetPlayerCommand** - Adds optional `--player` arg, runs on world thread
+- ✅ **TargetEntityCommand** - Raycasts to find entities in view, runs on world thread
+
+### Define a command
+
+```kotlin
+@Command(
+    name = "heal",
+    description = "Heal a player",
+    permission = "admin.heal",
+    type = CommandType.PLAYER
+)
+class HealCommand(
+    private val healthService: HealthService  // DI works!
+) {
+    fun execute(
+        @Context context: CommandContext,
+        @Context world: World,
+        @Context store: Store<EntityStore>,
+        @Context ref: Ref<EntityStore>,
+        @Arg("amount", "Amount of health to restore", required = false, defaultValue = "20") amount: Int
+    ) {
+        healthService.heal(store, ref, amount)
+        context.sendMessage(Message.raw("Healed for $amount HP"))
+    }
+}
+```
+
+### Automatic discovery
+
+When you pass `commandRegistry` to `NexusContext.create()`, Nexus scans for all `@Command`-annotated classes, validates them, creates instances with dependency injection, and registers them with Hytale:
+
+```kotlin
+val context = NexusContext.create(
+    basePackage = "net.example.mymod",
+    classLoader = this::class.java.classLoader,
+    commandRegistry = this.commandRegistry  // Hytale's CommandRegistry
+)
+```
+
+### Async commands
+
+Async commands run on a background thread and have no access to world/entity state. They're perfect for commands that don't need game data (help, rules, backups):
+
+```kotlin
+@Command(
+    name = "backup",
+    description = "Backup the server",
+    permission = "admin.backup",
+    type = CommandType.ASYNC
+)
+class BackupCommand(
+    private val backupService: BackupService
+) {
+    suspend fun execute(
+        @Context context: CommandContext,
+        @Arg("world", "World to backup") worldName: String
+    ) {
+        context.sendMessage(Message.raw("Starting backup of $worldName..."))
+        backupService.backupWorld(worldName)
+        context.sendMessage(Message.raw("Backup complete!"))
+    }
+}
+```
+
+### Player commands
+
+Player commands run on the world thread and have full access to the Entity Component System:
+
+```kotlin
+@Command(
+    name = "settime",
+    description = "Set the world time",
+    permission = "admin.time",
+    type = CommandType.PLAYER
+)
+class SetTimeCommand {
+    fun execute(
+        @Context context: CommandContext,
+        @Context world: World,
+        @Arg("time", "Time of day (0-24000)") time: Int
+    ) {
+        world.setTime(time)
+        context.sendMessage(Message.raw("Time set to $time"))
+    }
+}
+```
+
+### Custom argument types
+
+Register custom `ArgumentResolver` implementations before creating the context:
+
+```kotlin
+object PlayerArgumentResolver : ArgumentResolver<Player> {
+    override val type = Player::class
+
+    override fun createRequiredArg(command: Any, name: String, description: String): Any {
+        return (command as AbstractCommand).withRequiredArg(name, description, ArgTypes.PLAYER)
+    }
+
+    override fun createOptionalArg(command: Any, name: String, description: String): Any {
+        return (command as AbstractCommand).withOptionalArg(name, description, ArgTypes.PLAYER)
+    }
+
+    override fun createDefaultArg(command: Any, name: String, description: String, defaultValue: String): Any {
+        return (command as AbstractCommand).withDefaultArg(name, description, defaultValue, ArgTypes.PLAYER)
+    }
+}
+
+// Register before creating context
+ArgumentResolvers.register(Player::class, PlayerArgumentResolver)
+
+val context = NexusContext.create(
+    basePackage = "net.example.mymod",
+    classLoader = this::class.java.classLoader,
+    commandRegistry = this.commandRegistry
+)
+```
+
+### Supported @Context types
+
+| Command Type | Supported Context Parameters |
+|---|---|
+| `CommandType.ASYNC` | `CommandContext` |
+| `CommandType.PLAYER` | `CommandContext`, `World`, `Store<EntityStore>`, `PlayerRef`, `Ref<EntityStore>` |
+| `CommandType.TARGET_PLAYER` | `CommandContext`, `World`, `Store<EntityStore>`, `PlayerRef`, `Ref<EntityStore>` (target player's ref) |
+| `CommandType.TARGET_ENTITY` | `CommandContext`, `World`, `Store<EntityStore>`, `ObjectList<Ref<EntityStore>>` (entities in view) |
+
+### Built-in argument types
+
+Nexus provides resolvers for these Kotlin types out of the box:
+- `String`
+- `Int`
+- `Double`
+- `Float`
+- `Boolean`
+
+### Validation
+
+Command scanning performs fail-fast validation at startup:
+- ✅ Verifies `execute()` method exists
+- ✅ Checks all `@Arg` types have registered `ArgumentResolver`
+- ✅ Validates required arguments come before optional arguments
+- ✅ Ensures `@Context` parameters are supported types for the command type
+- ✅ Detects duplicate command names
+
+If validation fails, `NexusContext.create()` throws `CommandException` with a detailed error message.
 
 ## Configuration System
 
@@ -264,6 +431,14 @@ database:
 | `@Comment("text")` | Class, property | YAML comment above the field |
 | `@Transient` | Property | Excluded from save/load |
 
+### Commands (Beta)
+
+| Annotation | Target | Description |
+|---|---|---|
+| `@Command(...)` | Class | Marks a command class with metadata (name, description, permission, aliases, type) |
+| `@Arg("name", ...)` | Parameter | Marks a parameter as a user-provided argument |
+| `@Context` | Parameter | Marks a parameter for runtime injection (CommandContext, World, Store, etc.) |
+
 ## Advanced Usage
 
 ### Manual bean registration
@@ -324,10 +499,24 @@ nexus/
 │   ├── NexusDispatchers      Virtual thread executor + classloader propagation
 │   ├── NexusScope            Per-plugin CoroutineScope with SupervisorJob
 │   └── CoroutineExtensions   withIO, withDefault helpers
-└── config/
-    ├── ConfigManager          Centralized config loading, saving, caching
-    ├── ConfigLoader           YAML serialization with reflection
-    └── @ConfigFile, @ConfigName, @Comment, @Transient
+├── config/
+│   ├── ConfigManager          Centralized config loading, saving, caching
+│   ├── ConfigLoader           YAML serialization with reflection
+│   └── @ConfigFile, @ConfigName, @Comment, @Transient
+└── commands/ (Beta)
+    ├── CommandScanner         ClassGraph-based command discovery
+    ├── CommandRegistry        Bridges to Hytale's CommandRegistry
+    ├── CommandDefinition      Command metadata (annotation, execute method, parameters)
+    ├── @Command, @Arg, @Context
+    ├── adapters/
+    │   ├── AsyncCommandAdapter        ✅ Working
+    │   ├── PlayerCommandAdapter       ✅ Working
+    │   ├── TargetPlayerCommandAdapter ✅ Working
+    │   └── TargetEntityCommandAdapter ✅ Working
+    └── arguments/
+        ├── ArgumentResolver       Interface for type → Hytale arg mapping
+        ├── ArgumentResolvers      Registry of resolvers
+        └── BuiltInResolvers       String, Int, Double, Float, Boolean
 ```
 
 ## Requirements

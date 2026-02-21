@@ -5,10 +5,14 @@ plugins {
 }
 
 group = "net.badgersmc"
-version = "1.4.0"
+version = "1.5.0"
 
 repositories {
     mavenCentral()
+    maven {
+        name = "hytale"
+        url = uri("https://maven.hytale.com/pre-release")
+    }
 }
 
 dependencies {
@@ -27,6 +31,9 @@ dependencies {
 
     // Configuration (YAML)
     implementation("com.charleskorn.kaml:kaml:0.59.0")
+
+    // Hytale Server API (provided by server at runtime)
+    compileOnly("com.hypixel.hytale:Server:2026.02.11-891910c77")
 
     // Testing
     testImplementation(kotlin("test"))

@@ -1,12 +1,17 @@
 package net.badgersmc.nexus.core
 
+import com.hypixel.hytale.server.core.command.system.CommandRegistry as HytaleCommandRegistry
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancel
 import net.badgersmc.nexus.annotations.ScopeType
+import net.badgersmc.nexus.commands.CommandDefinition
+import net.badgersmc.nexus.commands.CommandRegistry
+import net.badgersmc.nexus.commands.CommandScanner
 import net.badgersmc.nexus.config.ConfigManager
 import net.badgersmc.nexus.coroutines.NexusDispatchers
 import net.badgersmc.nexus.coroutines.createNexusScope
 import net.badgersmc.nexus.scanning.ComponentScanner
+import org.slf4j.LoggerFactory
 import java.nio.file.Path
 import kotlin.reflect.KClass
 
@@ -20,6 +25,7 @@ class NexusContext private constructor(
     private val contextName: String
 ) {
 
+    private val logger = LoggerFactory.getLogger(NexusContext::class.java)
     private val registry = ComponentRegistry()
     private val factory = BeanFactory(registry)
     private val scanner = ComponentScanner()
@@ -56,15 +62,20 @@ class NexusContext private constructor(
          * If [configDirectory] is provided, also discovers @ConfigFile classes,
          * loads them via ConfigManager, and registers them as singleton beans.
          *
+         * If [commandRegistry] is provided, also discovers @Command classes,
+         * validates them, creates adapters, and registers them with Hytale.
+         *
          * @param basePackage Base package to scan for components
          * @param classLoader The classloader to scan (required — typically the plugin's classloader)
          * @param configDirectory Directory for config files (enables @ConfigFile auto-discovery)
+         * @param commandRegistry Hytale's CommandRegistry (enables @Command auto-discovery and registration)
          * @param contextName Name for the context (used in thread names and coroutine debugging)
          */
         fun create(
             basePackage: String,
             classLoader: ClassLoader,
             configDirectory: Path? = null,
+            commandRegistry: HytaleCommandRegistry? = null,
             contextName: String = "nexus"
         ): NexusContext {
             val context = NexusContext(classLoader, contextName)
@@ -73,6 +84,9 @@ class NexusContext private constructor(
                 context.loadAndRegisterConfigs(basePackage, classLoader, configDirectory)
             }
             context.initialize(basePackage, classLoader)
+            if (commandRegistry != null) {
+                context.loadAndRegisterCommands(basePackage, classLoader, commandRegistry)
+            }
             return context
         }
 
@@ -245,6 +259,57 @@ class NexusContext private constructor(
 
         registry.clear()
         initialized = false
+    }
+
+    /**
+     * Scan for @Command classes, create adapters, and register with Hytale.
+     *
+     * Called automatically from create() if commandRegistry is provided.
+     * Commands are registered after component initialization so services are available.
+     *
+     * @param basePackage Base package to scan for @Command classes
+     * @param classLoader The classloader to scan
+     * @param hytaleCommandRegistry Hytale's CommandRegistry
+     * @throws net.badgersmc.nexus.commands.CommandException if validation or registration fails
+     */
+    private fun loadAndRegisterCommands(
+        basePackage: String,
+        classLoader: ClassLoader,
+        hytaleCommandRegistry: HytaleCommandRegistry
+    ) {
+        val commandScanner = CommandScanner()
+        val definitions = commandScanner.scanCommands(basePackage, classLoader)
+
+        val commandRegistry = CommandRegistry(hytaleCommandRegistry, factory)
+        commandRegistry.registerAll(definitions)
+
+        logger.info("Registered {} commands from package '{}'", definitions.size, basePackage)
+    }
+
+    /**
+     * Scan for @Command classes and return their definitions.
+     *
+     * This method provides command metadata for manual integration with Hytale's command system.
+     * Most users should pass commandRegistry to create() instead for automatic registration.
+     *
+     * @param basePackage Base package to scan for @Command classes
+     * @param classLoader The classloader to scan
+     * @return List of command definitions ready for adapter creation
+     * @throws net.badgersmc.nexus.commands.CommandException if validation fails
+     */
+    fun scanCommands(basePackage: String, classLoader: ClassLoader): List<CommandDefinition> {
+        val commandScanner = CommandScanner()
+        return commandScanner.scanCommands(basePackage, classLoader)
+    }
+
+    /**
+     * Access to the bean factory for creating command instances.
+     * Used by command adapters to create command beans with dependency injection.
+     *
+     * @return The bean factory
+     */
+    fun getBeanFactory(): BeanFactory {
+        return factory
     }
 
     private fun ensureInitialized() {

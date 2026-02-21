@@ -91,3 +91,7 @@ test-results/
 #Sensitive tokens and keys
 gradle.properties
 local.properties
+
+
+#Ignore vscode AI rules
+.github\instructions\codacy.instructions.md
