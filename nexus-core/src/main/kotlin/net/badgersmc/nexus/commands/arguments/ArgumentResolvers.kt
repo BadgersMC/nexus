@@ -28,9 +28,7 @@ object ArgumentResolvers {
     private val resolvers = ConcurrentHashMap<KClass<*>, ArgumentResolver<*>>()
 
     init {
-        // Register built-in resolvers for primitive types
-        registerBuiltInResolvers()
-        logger.debug("ArgumentResolvers initialized with built-in resolvers for: String, Int, Double, Float, Boolean")
+        logger.debug("ArgumentResolvers initialized — platform modules register their own built-in resolvers")
     }
 
     /**
