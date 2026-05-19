@@ -9,12 +9,12 @@ group = "net.badgersmc"
 version = "1.6.0"
 
 repositories {
-    mavenLocal()
     mavenCentral()
     maven {
         name = "hytale"
         url = uri("https://maven.hytale.com/pre-release")
     }
+    mavenLocal()  // last — only for locally-published nexus snapshots
 }
 
 dependencies {

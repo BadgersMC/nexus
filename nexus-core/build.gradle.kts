@@ -5,8 +5,8 @@ plugins {
 }
 
 repositories {
-    mavenLocal()
     mavenCentral()
+    mavenLocal()  // last — only for locally-published nexus snapshots
 }
 
 dependencies {

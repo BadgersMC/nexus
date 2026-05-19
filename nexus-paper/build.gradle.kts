@@ -4,9 +4,9 @@ plugins {
 }
 
 repositories {
-    mavenLocal()
     mavenCentral()
     maven("https://repo.papermc.io/repository/maven-public/")
+    mavenLocal()  // last — only for locally-published nexus snapshots
 }
 
 dependencies {
