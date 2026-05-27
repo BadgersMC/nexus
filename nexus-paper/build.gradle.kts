@@ -6,7 +6,9 @@ plugins {
 repositories {
     mavenCentral()
     maven("https://repo.papermc.io/repository/maven-public/")
-    mavenLocal()  // last — only for locally-published nexus snapshots
+    if (providers.gradleProperty("useMavenLocal").orNull == "true") {
+        mavenLocal() // opt-in via -PuseMavenLocal=true — never on CI
+    }
 }
 
 dependencies {

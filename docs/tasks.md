@@ -17,7 +17,7 @@ Each task carries `References:` (REQ-IDs + spec sections consulted) and `Evidenc
 - [ ] **INFRA-01** — Update root build.gradle.kts Paper dependency
   References: REQ-001 (Paper Platform Support), REQ-001 (Dependency Management)
   Tag: INFRA
-  Description: Update the root `build.gradle.kts` to reference Paper API `1.21.11-R0.1-SNAPSHOT`. Update the Hytale Maven repository URL if needed. Ensure Kotlin 2.0.21 and JVM toolchain 21 are preserved.
+  Description: Update the root `build.gradle.kts` to reference Paper API `1.21.11-R0.1-SNAPSHOT`. Ensure Kotlin 2.0.21 and JVM toolchain 21 are preserved.
   Evidence: ` `
 
 - [ ] **INFRA-02** — Update nexus-paper build.gradle.kts for Paper 1.21.11

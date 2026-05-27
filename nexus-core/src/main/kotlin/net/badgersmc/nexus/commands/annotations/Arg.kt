@@ -3,8 +3,8 @@ package net.badgersmc.nexus.commands.annotations
 /**
  * Marks a parameter as a command argument that will be provided by the user.
  *
- * The parameter type must have a registered ArgumentResolver in the ArgumentResolvers registry.
- * Built-in resolvers exist for String, Int, Double, Float, and Boolean.
+ * The parameter type must have a registered resolver — see each adapter's
+ * resolver registry (`PaperArgumentResolvers` for nexus-paper).
  *
  * Example:
  * ```kotlin
@@ -14,19 +14,19 @@ package net.badgersmc.nexus.commands.annotations
  * )
  * ```
  *
- * **Argument Order Rules:**
+ * **Argument order rules:**
  * - Required arguments must come before optional arguments
  * - Arguments are processed left-to-right in the method signature
  *
- * **Argument Types:**
- * - Required (required = true, no defaultValue): User must provide, validated at startup
- * - Optional (required = false): Uses Hytale's --name value syntax, can be omitted
- * - Default (defaultValue specified): Uses Hytale's default argument, value used if omitted
+ * **Argument kinds:**
+ * - Required (`required = true`, no `defaultValue`): user must provide it
+ * - Optional (`required = false`): can be omitted
+ * - Default (`defaultValue` specified): value used if omitted
  *
- * @param name The argument name (used for --name flags and error messages)
+ * @param name The argument name (used in error messages and flag-style adapters)
  * @param description Description shown in help text
  * @param required Whether the argument is required (true) or optional (false)
- * @param defaultValue Default value if not provided (makes this a DefaultArg in Hytale)
+ * @param defaultValue Default value if not provided
  */
 @Target(AnnotationTarget.VALUE_PARAMETER)
 @Retention(AnnotationRetention.RUNTIME)

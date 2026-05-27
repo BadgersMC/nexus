@@ -9,12 +9,12 @@ import kotlin.reflect.KFunction
 /**
  * Metadata for a discovered command.
  *
- * Contains all information needed to create a Hytale command adapter:
+ * Contains all information needed to wire a command into an adapter:
  * - The command class and its @Command annotation
- * - The execute() method to invoke
+ * - The `execute()` method to invoke
  * - Parameter metadata for argument/context injection
  *
- * Created by CommandScanner during classpath scanning.
+ * Produced by an adapter-specific scanner during classpath scanning.
  */
 data class CommandDefinition(
     /**
@@ -55,7 +55,7 @@ data class CommandParameter(
     val name: String,
 
     /**
-     * Parameter type (e.g., String::class, Int::class, CommandContext::class).
+     * Parameter type (e.g., `String::class`, `Int::class`, `CommandSender::class`).
      */
     val type: KClass<*>,
 

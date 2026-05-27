@@ -1,23 +1,25 @@
-# Nexus — Application Framework for Paper & Hytale
+# Nexus — Application Framework for Paper
 
-**Nexus** is a Kotlin-first application framework for Minecraft server plugins (Paper) and Hytale mods. It bundles dependency injection with classpath scanning, YAML configuration, command auto-discovery, coroutine infrastructure, and a growing set of opt-in modules that handle the boilerplate every plugin reinvents: i18n, persistence, schedulers, GUIs, Bedrock forms, Vault, PlaceholderAPI, and more.
+**Nexus** is a Kotlin-first application framework for Paper plugins. It bundles dependency injection with classpath scanning, YAML configuration, command auto-discovery, coroutine infrastructure, and a growing set of opt-in modules that handle the boilerplate every plugin reinvents: i18n, persistence, schedulers, GUIs, Bedrock forms, Vault, PlaceholderAPI, and more.
+
+> **2.0.0 — Hytale support removed.** Earlier Nexus releases shipped Hytale command adapters in the root project. The Hytale module is no longer maintained and was dropped in 2.0.0. If you still need it, pin to `1.11.0`.
 
 ## Modules
 
 | Module | Version | Purpose |
 |---|---|---|
-| **`nexus-core`** | 1.11.0 | DI container, config system, coroutine infrastructure, Hytale command adapters |
-| **`nexus-paper`** | 1.11.0 | Paper Brigadier command system, `BukkitDispatcher`, Paper extensions |
-| **`nexus-resources`** | 1.11.0 | Bundled-resource extraction (`ResourceExtractor.extractIfMissing` / `extractDirectory` / `overwriteIfNewerVersion`) — foundation for i18n + migrations |
-| **`nexus-i18n`** | 1.11.0 | MiniMessage-backed YAML translator (`LangService`), `@LangFile` annotation, per-locale file with bundled-default overlay |
-| **`nexus-persistence`** | 1.11.0 | `DatabaseFactory.open` (HikariCP, SQLite/MariaDB/Postgres) + idempotent versioned `MigrationRunner` |
-| **`nexus-scheduler`** | 1.11.0 | `NexusScheduler` with `AutoCloseable` handles, `cancelAll()` on shutdown, thread guards |
-| **`nexus-paper-loader`** | 1.11.0 | Java-only abstract `NexusPaperPluginLoader` declaring the standard runtime library set |
-| **`nexus-paper-gui`** | 1.11.0 | `ItemBuilder` DSL, `LivePollingMenu`, `PaginatedListMenu` (IFramework + Adventure) |
-| **`nexus-paper-bedrock`** | 1.11.0 | `PlatformDetectionService` (reflective Floodgate probe) + `CumulusFormBase` |
-| **`nexus-paper-listeners`** | 1.11.0 | `@Listener` marker + `registerNexusListeners` scanner (auto-registers Bukkit listeners) |
-| **`nexus-vault`** | 1.11.0 | `EconomyProvider` port + `VaultEconomyAdapter` + `VaultHealth` + `VaultDegradedEvent` |
-| **`nexus-papi`** | 1.11.0 | `@PapiExpansion` + `PlaceholderResolver` + auto-registration with PlaceholderAPI |
+| **`nexus-core`** | 2.0.0 | DI container, config system, coroutine infrastructure, command annotations |
+| **`nexus-paper`** | 2.0.0 | Paper Brigadier command system, `BukkitDispatcher`, Paper extensions |
+| **`nexus-resources`** | 2.0.0 | Bundled-resource extraction (`ResourceExtractor.extractIfMissing` / `extractDirectory` / `overwriteIfNewerVersion`) — foundation for i18n + migrations |
+| **`nexus-i18n`** | 2.0.0 | MiniMessage-backed YAML translator (`LangService`), `@LangFile` annotation, per-locale file with bundled-default overlay |
+| **`nexus-persistence`** | 2.0.0 | `DatabaseFactory.open` (HikariCP, SQLite/MariaDB/Postgres) + idempotent versioned `MigrationRunner` |
+| **`nexus-scheduler`** | 2.0.0 | `NexusScheduler` with `AutoCloseable` handles, `cancelAll()` on shutdown, thread guards |
+| **`nexus-paper-loader`** | 2.0.0 | Java-only abstract `NexusPaperPluginLoader` declaring the standard runtime library set |
+| **`nexus-paper-gui`** | 2.0.0 | `ItemBuilder` DSL, `LivePollingMenu`, `PaginatedListMenu` (IFramework + Adventure) |
+| **`nexus-paper-bedrock`** | 2.0.0 | `PlatformDetectionService` (reflective Floodgate probe) + `CumulusFormBase` |
+| **`nexus-paper-listeners`** | 2.0.0 | `@Listener` marker + `registerNexusListeners` scanner (auto-registers Bukkit listeners) |
+| **`nexus-vault`** | 2.0.0 | `EconomyProvider` port + `VaultEconomyAdapter` + `VaultHealth` + `VaultDegradedEvent` |
+| **`nexus-papi`** | 2.0.0 | `@PapiExpansion` + `PlaceholderResolver` + auto-registration with PlaceholderAPI |
 
 Roadmap and acceptance REQs: see [`docs/roadmap.md`](docs/roadmap.md) and [`docs/requirements.md`](docs/requirements.md).
 
@@ -49,20 +51,20 @@ repositories {
 
 dependencies {
     // Core DI + config + coroutines — always needed
-    implementation("net.badgersmc:nexus-core:1.11.0")
+    implementation("net.badgersmc:nexus-core:2.0.0")
 
     // Pick whichever extras you want:
-    implementation("net.badgersmc:nexus-paper:1.11.0")            // Paper commands
-    implementation("net.badgersmc:nexus-resources:1.11.0")        // Bundled resource extraction
-    implementation("net.badgersmc:nexus-i18n:1.11.0")             // MiniMessage i18n
-    implementation("net.badgersmc:nexus-persistence:1.11.0")      // DB + migrations
-    implementation("net.badgersmc:nexus-scheduler:1.11.0")        // Bukkit scheduler facade
-    implementation("net.badgersmc:nexus-paper-gui:1.11.0")        // IFramework GUIs
-    implementation("net.badgersmc:nexus-paper-bedrock:1.11.0")    // Cumulus / Floodgate
-    implementation("net.badgersmc:nexus-paper-listeners:1.11.0")  // @Listener auto-register
-    implementation("net.badgersmc:nexus-vault:1.11.0")            // Vault economy
-    implementation("net.badgersmc:nexus-papi:1.11.0")             // PlaceholderAPI
-    implementation("net.badgersmc:nexus-paper-loader:1.11.0")     // Shared PluginLoader
+    implementation("net.badgersmc:nexus-paper:2.0.0")            // Paper commands
+    implementation("net.badgersmc:nexus-resources:2.0.0")        // Bundled resource extraction
+    implementation("net.badgersmc:nexus-i18n:2.0.0")             // MiniMessage i18n
+    implementation("net.badgersmc:nexus-persistence:2.0.0")      // DB + migrations
+    implementation("net.badgersmc:nexus-scheduler:2.0.0")        // Bukkit scheduler facade
+    implementation("net.badgersmc:nexus-paper-gui:2.0.0")        // IFramework GUIs
+    implementation("net.badgersmc:nexus-paper-bedrock:2.0.0")    // Cumulus / Floodgate
+    implementation("net.badgersmc:nexus-paper-listeners:2.0.0")  // @Listener auto-register
+    implementation("net.badgersmc:nexus-vault:2.0.0")            // Vault economy
+    implementation("net.badgersmc:nexus-papi:2.0.0")             // PlaceholderAPI
+    implementation("net.badgersmc:nexus-paper-loader:2.0.0")     // Shared PluginLoader
 }
 ```
 
@@ -358,33 +360,6 @@ loader: net.example.myplugin.MyPluginLoader
 
 The Nexus base provides the standard runtime library set: kotlin-stdlib, kotlin-reflect, kotlinx-coroutines-core-jvm, kaml-jvm, classgraph, slf4j-api. Uses `repo1.maven.org` directly to bypass server-side Maven mirror outages.
 
-## Hytale support
-
-The Hytale command adapter from earlier Nexus releases is still in `nexus-core`:
-
-```kotlin
-@Command(name = "heal", description = "Heal a player", permission = "admin.heal", type = CommandType.PLAYER)
-class HealCommand(private val healthService: HealthService) {
-    fun execute(
-        @Context context: CommandContext,
-        @Context world: World,
-        @Context store: Store<EntityStore>,
-        @Context ref: Ref<EntityStore>,
-        @Arg("amount", "Amount of health", required = false, defaultValue = "20") amount: Int
-    ) {
-        healthService.heal(store, ref, amount)
-        context.sendMessage(Message.raw("Healed for $amount HP"))
-    }
-}
-
-val context = NexusContext.create(
-    basePackage = "net.example.mymod",
-    classLoader = this::class.java.classLoader,
-    commandRegistry = this.commandRegistry  // Hytale's CommandRegistry
-)
-```
-
-Hytale command types: `ASYNC`, `PLAYER`, `TARGET_PLAYER`, `TARGET_ENTITY` — see the source for context-parameter rules per type.
 
 ## Annotations cheat-sheet
 
@@ -409,7 +384,7 @@ nexus-core/                       Phase 0
 ├── annotations/      @Component, @Service, @Repository, @Inject, …
 ├── coroutines/       NexusDispatchers, NexusScope, CoroutineExtensions
 ├── config/           ConfigManager, ConfigLoader, @ConfigFile / @ConfigName / @Comment / @Transient
-└── commands/         Hytale command scanner + adapters
+└── commands/         Shared @Command / @Arg / @Context annotations + CommandDefinition
 
 nexus-paper/                      Phase 0
 ├── BukkitDispatcher              Main-thread coroutine dispatcher
@@ -468,7 +443,6 @@ nexus-papi/                       Phase 4
 - Java 21+ (for virtual threads)
 - Kotlin 2.0+
 - **Paper modules**: Paper 1.21.11-R0.1-SNAPSHOT or newer
-- **Hytale module**: Hytale Server API
 - Optional runtime deps: PlaceholderAPI 2.11+, Vault 1.7+, Floodgate 2.2+, Cumulus 2.0+
 
 ## Shadow JAR relocation
