@@ -74,4 +74,109 @@ class NexusPermissionsPluginTest {
         assertTrue("name: ConsumerPlugin" in generated, "Consumer's name: must survive. Got:\n$generated")
         assertTrue("main: com.example.Consumer" in generated, "Consumer's main: must survive. Got:\n$generated")
     }
+
+    /**
+     * Regression: pluginYml used to be hardcoded to
+     * `build/resources/main/paper-plugin.yml`. Consumers that customise
+     * `processResources.destinationDir` would silently miss the merge.
+     */
+    @Test
+    fun `merge target follows processResources destinationDirectory when consumer customises it`() {
+        projectDir.resolve("settings.gradle.kts").toFile()
+            .writeText("""rootProject.name = "consumer"""")
+
+        projectDir.resolve("build.gradle.kts").toFile().writeText(
+            """
+            import net.badgersmc.nexus.permissions.Default
+
+            plugins {
+                java
+                id("net.badgersmc.nexus.permissions")
+            }
+
+            // Java plugin's processResources.destinationDir is driven
+            // by sourceSets.main.output.resourcesDir — relocate it the
+            // canonical way and processResources will follow.
+            sourceSets {
+                named("main") {
+                    output.resourcesDir = layout.buildDirectory.dir("custom-resources").get().asFile
+                }
+            }
+
+            nexusPermissions {
+                tree {
+                    node("foo.admin", default = Default.OP) {
+                        child("reload")
+                    }
+                }
+            }
+            """.trimIndent()
+        )
+
+        val resources = projectDir.resolve("src/main/resources").toFile()
+        resources.mkdirs()
+        File(resources, "paper-plugin.yml").writeText(
+            """
+            name: ConsumerPlugin
+            main: com.example.Consumer
+            api-version: '1.21'
+
+            """.trimIndent()
+        )
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withArguments("classes", "--stacktrace")
+            .withPluginClasspath()
+            .build()
+
+        assertTrue(
+            result.output.contains("BUILD SUCCESSFUL"),
+            "Gradle build did not succeed:\n${result.output}",
+        )
+
+        val customTarget = projectDir.resolve("build/custom-resources/paper-plugin.yml").toFile()
+        assertTrue(customTarget.exists(), "Merge should land in the customised destinationDir")
+        val text = customTarget.readText()
+        assertTrue("foo.admin:" in text, "Custom-destination file must carry the merged tree")
+    }
+
+    /**
+     * Regression: missing paper-plugin.yml used to be silently skipped,
+     * shipping a jar without any permissions block. Now fails fast.
+     */
+    @Test
+    fun `task fails the build when paper-plugin yml is missing`() {
+        projectDir.resolve("settings.gradle.kts").toFile()
+            .writeText("""rootProject.name = "consumer"""")
+
+        projectDir.resolve("build.gradle.kts").toFile().writeText(
+            """
+            import net.badgersmc.nexus.permissions.Default
+
+            plugins {
+                java
+                id("net.badgersmc.nexus.permissions")
+            }
+
+            nexusPermissions {
+                tree {
+                    node("foo.admin", default = Default.OP) { child("reload") }
+                }
+            }
+            """.trimIndent()
+        )
+        // Deliberately no src/main/resources/paper-plugin.yml.
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withArguments("classes", "--stacktrace")
+            .withPluginClasspath()
+            .buildAndFail()
+
+        assertTrue(
+            "nexus-permissions: expected staged paper-plugin.yml" in result.output,
+            "Expected explicit failure message. Got:\n${result.output}",
+        )
+    }
 }

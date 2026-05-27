@@ -39,7 +39,11 @@ object PermissionTreeSerializer {
             if (node.children.isNotEmpty()) {
                 entry["children"] = node.children.map { it.name }.sorted()
             }
-            sink[node.name] = entry
+            val prev = sink.put(node.name, entry)
+            require(prev == null) {
+                "Duplicate permission node name: ${node.name}. " +
+                    "Each fully-qualified permission may only appear once in a tree."
+            }
             flatten(node.children, sink)
         }
     }

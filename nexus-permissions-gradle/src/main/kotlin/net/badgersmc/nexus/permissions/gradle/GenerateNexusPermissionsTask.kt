@@ -3,6 +3,7 @@ package net.badgersmc.nexus.permissions.gradle
 import net.badgersmc.nexus.permissions.PaperPluginYmlMerger
 import net.badgersmc.nexus.permissions.PermissionTree
 import org.gradle.api.DefaultTask
+import org.gradle.api.GradleException
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Internal
@@ -29,8 +30,14 @@ abstract class GenerateNexusPermissionsTask : DefaultTask() {
     fun generate() {
         val file = pluginYml.get().asFile
         if (!file.exists()) {
-            logger.warn("nexus-permissions: $file does not exist; skipping merge")
-            return
+            // Fail loudly. A silent skip ships a jar with no permissions
+            // block, which is exactly the regression this plugin exists
+            // to prevent.
+            throw GradleException(
+                "nexus-permissions: expected staged paper-plugin.yml at $file, " +
+                    "but it does not exist. Ensure src/main/resources/paper-plugin.yml " +
+                    "is present so processResources can stage it before this task runs."
+            )
         }
         val merged = PaperPluginYmlMerger.merge(file.readText(), tree.get())
         file.writeText(merged)

@@ -82,7 +82,15 @@ class PermissionNodeBuilder internal constructor(private val parentName: String)
         description: String? = null,
         block: PermissionNodeBuilder.() -> Unit = {},
     ) {
-        val qualified = "$parentName.$name"
+        // Accept both forms: relative `child("reload")` under
+        // `node("foo.admin")` produces `foo.admin.reload`; fully-qualified
+        // `child("foo.admin.reload")` is left alone (matches the example
+        // shape in docs/roadmap.md §150-167).
+        val qualified = if (name == parentName || name.startsWith("$parentName.")) {
+            name
+        } else {
+            "$parentName.$name"
+        }
         val nb = PermissionNodeBuilder(qualified)
         nb.block()
         children += PermissionNode(qualified, default, description, nb.build())
