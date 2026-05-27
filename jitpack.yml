@@ -1,0 +1,24 @@
+jdk:
+  - openjdk21
+
+before_install:
+  - sdk install java 21.0.5-tem || true
+  - sdk use java 21.0.5-tem || true
+
+install:
+  # Publish every sub-module to JitPack's local ~/.m2 cache. JitPack picks up
+  # whatever lands there and exposes it under com.github.BadgersMC.Nexus:<module>:<tag>.
+  # Root project has no artifact since 2.0.0; sub-module list mirrors settings.gradle.kts.
+  - ./gradlew --no-daemon
+      :nexus-core:publishToMavenLocal
+      :nexus-paper:publishToMavenLocal
+      :nexus-resources:publishToMavenLocal
+      :nexus-i18n:publishToMavenLocal
+      :nexus-persistence:publishToMavenLocal
+      :nexus-scheduler:publishToMavenLocal
+      :nexus-paper-loader:publishToMavenLocal
+      :nexus-paper-gui:publishToMavenLocal
+      :nexus-paper-bedrock:publishToMavenLocal
+      :nexus-paper-listeners:publishToMavenLocal
+      :nexus-vault:publishToMavenLocal
+      :nexus-papi:publishToMavenLocal
