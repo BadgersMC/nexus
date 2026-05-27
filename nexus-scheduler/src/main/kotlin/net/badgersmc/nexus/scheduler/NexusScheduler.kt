@@ -142,10 +142,13 @@ class NexusScheduler(private val backend: SchedulerBackend) {
     private fun wrap(action: () -> Unit): Runnable = Runnable {
         try {
             action()
-        } catch (e: Throwable) {
-            // Don't let exceptions kill the scheduler — log and continue.
+        } catch (e: Exception) {
+            // Don't let recoverable exceptions kill the scheduler — log and
+            // continue. JVM Errors (OutOfMemoryError, LinkageError, …) are
+            // deliberately not caught: those signal conditions the scheduler
+            // cannot meaningfully recover from.
             java.util.logging.Logger.getLogger(NexusScheduler::class.java.name)
-                .warning("Scheduled task threw ${e::class.simpleName}: ${e.message}")
+                .log(java.util.logging.Level.WARNING, "Scheduled task threw", e)
         }
     }
 

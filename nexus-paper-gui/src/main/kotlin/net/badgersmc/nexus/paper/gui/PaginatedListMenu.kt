@@ -30,7 +30,14 @@ abstract class PaginatedListMenu<T>(
     refreshTicks: Long = 20L
 ) : LivePollingMenu(scheduler, rows, refreshTicks) {
 
+    init {
+        require(rows in 2..6) {
+            "PaginatedListMenu rows must be between 2 and 6 (got $rows) — one row is reserved for controls"
+        }
+    }
+
     private val contentRows = rows - 1
+    private val controlRowY = rows - 1
     private val itemsPerPage = contentRows * 9
 
     private var currentPage: Int = 0
@@ -80,7 +87,7 @@ abstract class PaginatedListMenu<T>(
     }
 
     private fun buildControls(gui: ChestGui, pageCount: Int, total: Int): StaticPane {
-        val pane = StaticPane(0, 5, 9, 1)
+        val pane = StaticPane(0, controlRowY, 9, 1)
 
         pane.addItem(GuiItem(prevIcon()) {
             it.isCancelled = true

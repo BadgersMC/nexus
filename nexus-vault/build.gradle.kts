@@ -7,7 +7,9 @@ repositories {
     mavenCentral()
     maven("https://repo.papermc.io/repository/maven-public/")
     maven("https://jitpack.io")
-    mavenLocal()
+    if (providers.gradleProperty("useMavenLocal").orNull == "true") {
+        mavenLocal() // opt-in via -PuseMavenLocal=true — never on CI
+    }
 }
 
 dependencies {

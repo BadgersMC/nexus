@@ -70,6 +70,15 @@ class LangService(
     private val resourcePrefix: String = annotation.resourcePrefix.trim('/')
     private val defaultLocale: String = annotation.defaultLocale
 
+    init {
+        require(resourcePrefix.isNotBlank()) {
+            "@LangFile.resourcePrefix on ${langClass.name} must not be blank"
+        }
+        require(defaultLocale.isNotBlank() && !defaultLocale.contains('/') && !defaultLocale.contains('\\')) {
+            "@LangFile.defaultLocale on ${langClass.name} must be a non-blank locale id without path separators (got '$defaultLocale')"
+        }
+    }
+
     @Volatile
     private var values: Map<String, String> = emptyMap()
 

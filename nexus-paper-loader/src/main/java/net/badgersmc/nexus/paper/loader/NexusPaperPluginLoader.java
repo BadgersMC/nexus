@@ -88,15 +88,38 @@ public abstract class NexusPaperPluginLoader implements PluginLoader {
     public void classloader(@NotNull PluginClasspathBuilder builder) {
         MavenLibraryResolver resolver = new MavenLibraryResolver();
         resolver.addRepository(MAVEN_CENTRAL_DIRECT);
-        for (RemoteRepository extra : additionalRepositories()) {
+
+        List<RemoteRepository> extraRepos = additionalRepositories();
+        if (extraRepos == null) {
+            throw new IllegalStateException(
+                    getClass().getName() + ".additionalRepositories() returned null — return an empty list instead"
+            );
+        }
+        for (RemoteRepository extra : extraRepos) {
+            if (extra == null) {
+                throw new IllegalStateException(
+                        getClass().getName() + ".additionalRepositories() contained a null entry"
+                );
+            }
             resolver.addRepository(extra);
         }
 
-        List<String> coords = new ArrayList<>(STANDARD_NEXUS_LIBRARIES.size() + 8);
+        List<String> extraLibs = additionalLibraries();
+        if (extraLibs == null) {
+            throw new IllegalStateException(
+                    getClass().getName() + ".additionalLibraries() returned null — return an empty list instead"
+            );
+        }
+        List<String> coords = new ArrayList<>(STANDARD_NEXUS_LIBRARIES.size() + extraLibs.size());
         coords.addAll(STANDARD_NEXUS_LIBRARIES);
-        coords.addAll(additionalLibraries());
+        coords.addAll(extraLibs);
 
         for (String coord : coords) {
+            if (coord == null || coord.isBlank()) {
+                throw new IllegalStateException(
+                        getClass().getName() + ".additionalLibraries() contained a null/blank coordinate"
+                );
+            }
             resolver.addDependency(new Dependency(new DefaultArtifact(coord), null));
         }
 

@@ -25,7 +25,9 @@ open class PlatformDetectionService {
             val instance = cls.getMethod("getInstance").invoke(null)
             val getPlayer = cls.getMethod("getPlayer", UUID::class.java)
             getPlayer.invoke(instance, uuid) != null
-        } catch (_: Throwable) {
+        } catch (_: ReflectiveOperationException) {
+            false
+        } catch (_: LinkageError) {
             false
         }
     }
@@ -35,7 +37,9 @@ open class PlatformDetectionService {
         return try {
             Class.forName("org.geysermc.cumulus.form.Form")
             true
-        } catch (_: Throwable) {
+        } catch (_: ReflectiveOperationException) {
+            false
+        } catch (_: LinkageError) {
             false
         }
     }
@@ -45,7 +49,9 @@ open class PlatformDetectionService {
         return try {
             Class.forName("org.geysermc.floodgate.api.FloodgateApi")
             true
-        } catch (_: Throwable) {
+        } catch (_: ReflectiveOperationException) {
+            false
+        } catch (_: LinkageError) {
             false
         }
     }

@@ -178,6 +178,7 @@ object ResourceExtractor {
         targetDir: File
     ): List<File> {
         val extracted = mutableListOf<File>()
+        val targetRoot = targetDir.canonicalFile
         ZipFile(jarFile).use { zip ->
             val entries = zip.entries()
             while (entries.hasMoreElements()) {
@@ -187,7 +188,7 @@ object ResourceExtractor {
                 if (!name.startsWith("$prefix/") && name != prefix) continue
                 val relative = name.removePrefix("$prefix/")
                 if (relative.isEmpty()) continue
-                val outFile = File(targetDir, relative)
+                val outFile = safeChild(targetRoot, relative) ?: continue
                 if (outFile.exists()) continue
                 outFile.parentFile?.mkdirs()
                 zip.getInputStream(entry).use { input ->
@@ -197,6 +198,17 @@ object ResourceExtractor {
             }
         }
         return extracted
+    }
+
+    /**
+     * Resolve [relative] under [root] and reject any path that escapes the
+     * root directory via `..` segments or absolute components. Defends against
+     * crafted zip entries (Zip Slip).
+     */
+    private fun safeChild(root: File, relative: String): File? {
+        if (relative.startsWith("/") || relative.startsWith("\\")) return null
+        val candidate = File(root, relative).canonicalFile
+        return if (candidate.toPath().startsWith(root.toPath())) candidate else null
     }
 
     /**

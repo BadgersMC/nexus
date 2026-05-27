@@ -38,7 +38,20 @@ fun registerNexusListeners(
         .use { result ->
             result.getClassesWithAnnotation(Listener::class.java.name)
                 .filter { !it.isAbstract && !it.isInterface }
-                .mapNotNull { it.loadClass() }
+                // Isolate per-class load failures so one bad class doesn't
+                // abort discovery for every other listener in the package.
+                .mapNotNull { classInfo ->
+                    try {
+                        classInfo.loadClass()
+                    } catch (e: Throwable) {
+                        logger.log(
+                            java.util.logging.Level.WARNING,
+                            "Failed to load @Listener candidate ${classInfo.name}",
+                            e
+                        )
+                        null
+                    }
+                }
         }
 
     var registered = 0
@@ -52,7 +65,11 @@ fun registerNexusListeners(
             Bukkit.getPluginManager().registerEvents(instance, plugin)
             registered++
         } catch (e: Exception) {
-            logger.warning("Failed to register listener ${cls.name}: ${e.message}")
+            logger.log(
+                java.util.logging.Level.WARNING,
+                "Failed to register listener ${cls.name}",
+                e
+            )
         }
     }
     logger.info("Registered $registered @Listener beans with Bukkit")

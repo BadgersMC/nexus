@@ -54,9 +54,14 @@ object DatabaseFactory {
 
     private fun buildUrl(base: String, params: Map<String, String>): String {
         if (params.isEmpty()) return base
-        val query = params.entries.joinToString("&") { "${it.key}=${it.value}" }
+        val query = params.entries.joinToString("&") { (k, v) ->
+            "${encode(k)}=${encode(v)}"
+        }
         return "$base?$query"
     }
+
+    private fun encode(value: String): String =
+        java.net.URLEncoder.encode(value, java.nio.charset.StandardCharsets.UTF_8)
 }
 
 /**

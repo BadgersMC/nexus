@@ -58,28 +58,39 @@ class MigrationRunner(
      * sanity-check the discovered set before running.
      */
     fun discover(): List<Migration> {
-        val seen = mutableMapOf<Int, Migration>()
+        // Track all (version, migration) pairs first so we can detect
+        // duplicate version numbers across JARs / exploded classpath roots
+        // and fail loudly. Silently overwriting one migration with another
+        // would make `runAll()` nondeterministic w.r.t. classpath ordering.
+        val all = mutableListOf<Migration>()
         val prefix = resourcePrefix.trim('/')
 
-        // Try fast path: locate this class's source JAR and enumerate ZIP entries.
-        locateClassLoaderJar()?.let { jar ->
-            ZipFile(jar).use { zip ->
-                val entries = zip.entries()
-                while (entries.hasMoreElements()) {
-                    val entry = entries.nextElement()
-                    if (entry.isDirectory) continue
-                    val name = entry.name
-                    if (!name.startsWith("$prefix/")) continue
-                    val fileName = name.substringAfterLast('/')
-                    val match = migrationPattern.matchEntire(fileName) ?: continue
-                    val version = match.groupValues[1].toInt()
-                    val title = match.groupValues[2]
-                    seen[version] = Migration(version, title, name)
+        // Fast path: enumerate every JAR on the classloader whose entries
+        // start with the prefix. Walking the entire classpath catches
+        // migrations that ship in dependency JARs (a single-JAR probe would
+        // miss them — only the runner's own JAR was visible before).
+        for (jar in locateClassLoaderJars()) {
+            try {
+                ZipFile(jar).use { zip ->
+                    val entries = zip.entries()
+                    while (entries.hasMoreElements()) {
+                        val entry = entries.nextElement()
+                        if (entry.isDirectory) continue
+                        val name = entry.name
+                        if (!name.startsWith("$prefix/")) continue
+                        val fileName = name.substringAfterLast('/')
+                        val match = migrationPattern.matchEntire(fileName) ?: continue
+                        val version = match.groupValues[1].toInt()
+                        val title = match.groupValues[2]
+                        all += Migration(version, title, name)
+                    }
                 }
+            } catch (_: Exception) {
+                // skip unreadable jars (signed-jar quirks, etc.)
             }
         }
 
-        // Slow path / exploded classpath: probe the directory URL.
+        // Exploded classpath fallback (also used by unit tests).
         val dirUrls = classLoader.getResources(prefix).toList()
         for (url in dirUrls) {
             if (url.protocol != "file") continue
@@ -90,11 +101,23 @@ class MigrationRunner(
                 val version = match.groupValues[1].toInt()
                 val title = match.groupValues[2]
                 val resourceName = "$prefix/${file.relativeTo(root).path.replace(java.io.File.separatorChar, '/')}"
-                seen[version] = Migration(version, title, resourceName)
+                all += Migration(version, title, resourceName)
             }
         }
 
-        return seen.values.toList()
+        // Deduplicate identical entries (same resource path discovered via
+        // both the JAR walk and the exploded-classpath walk) and then assert
+        // there are no remaining version collisions.
+        val unique = all.distinctBy { it.resource }
+        val byVersion = unique.groupBy { it.version }
+        val collisions = byVersion.filterValues { it.size > 1 }
+        if (collisions.isNotEmpty()) {
+            val msg = collisions.entries.joinToString("; ") { (v, list) ->
+                "version $v -> [${list.joinToString { it.resource }}]"
+            }
+            error("Duplicate migration versions discovered: $msg")
+        }
+        return unique.sortedBy { it.version }
     }
 
     private fun ensureMigrationTable(conn: java.sql.Connection) {
@@ -174,16 +197,27 @@ class MigrationRunner(
         return statements
     }
 
-    private fun locateClassLoaderJar(): java.io.File? {
-        return try {
-            val probe = classLoader.getResource("net/badgersmc/nexus/persistence/MigrationRunner.class")
-                ?: return null
-            val raw = probe.toString()
-            if (!raw.startsWith("jar:")) return null
-            val jarPart = raw.substringAfter("jar:").substringBefore("!/").removePrefix("file:")
-            java.io.File(java.net.URLDecoder.decode(jarPart, Charsets.UTF_8))
+    /**
+     * Enumerate every jar visible on [classLoader] that contains the configured
+     * resource prefix as a top-level entry. This catches migration files that
+     * ship in dependency jars, not just the runner's own jar.
+     */
+    private fun locateClassLoaderJars(): List<java.io.File> {
+        val jars = LinkedHashSet<java.io.File>()
+        val prefix = resourcePrefix.trim('/')
+        try {
+            val markers = classLoader.getResources("$prefix/").toList() + classLoader.getResources(prefix).toList()
+            for (url in markers) {
+                val raw = url.toString()
+                if (!raw.startsWith("jar:")) continue
+                val jarPart = raw.substringAfter("jar:").substringBefore("!/").removePrefix("file:")
+                val decoded = java.net.URLDecoder.decode(jarPart, Charsets.UTF_8)
+                val file = java.io.File(decoded)
+                if (file.isFile) jars.add(file)
+            }
         } catch (_: Exception) {
-            null
+            // best effort
         }
+        return jars.toList()
     }
 }

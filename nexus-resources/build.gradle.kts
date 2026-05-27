@@ -6,7 +6,9 @@ plugins {
 repositories {
     mavenCentral()
     maven("https://repo.papermc.io/repository/maven-public/")
-    mavenLocal()
+    if (providers.gradleProperty("useMavenLocal").orNull == "true") {
+        mavenLocal() // opt-in via -PuseMavenLocal=true — never on CI
+    }
 }
 
 dependencies {

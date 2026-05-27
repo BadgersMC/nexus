@@ -5,7 +5,9 @@ plugins {
 
 repositories {
     mavenCentral()
-    mavenLocal()
+    if (providers.gradleProperty("useMavenLocal").orNull == "true") {
+        mavenLocal() // opt-in via -PuseMavenLocal=true — never on CI
+    }
 }
 
 dependencies {

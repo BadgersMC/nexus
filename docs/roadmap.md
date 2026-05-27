@@ -1,10 +1,10 @@
 # Nexus Module Roadmap
 
-**Status:** Planning. No code lands until a phase's REQs are written in `requirements.md` and decomposed into TDD tasks in `tasks.md`.
+**Status:** Execution in progress. Phases 1–4 landed in a single rollout (10 modules, `1.6.0` → `1.11.0`); Phase 5 (permissions Gradle plugin, archetype template) deferred.
 
-**Goal:** absorb the boilerplate currently duplicated across EnthusiaMarket (EM), EnthusiaGiveaway (EG), and LumaSG into reusable Nexus modules. Land all modules in Nexus first; migrate consumers after.
+**Goal:** absorb the boilerplate currently duplicated across EnthusiaMarket (EM), EnthusiaGiveaway (EG), and LumaSG into reusable Nexus modules. Land Nexus modules first; migrate consumers after.
 
-**Versioning:** one minor bump per module (current `1.6.0` → `1.7.0` for the first new module, and so on). No breaking changes to existing modules until a deliberate `2.0.0`.
+**Versioning:** one minor bump per *phase rollout*, not per module. Phase 1 (i18n + resources) bumped 1.6.0 → 1.7.0; Phase 2 (persistence, scheduler, paper-loader) → 1.8.0/1.9.0; Phase 3 (paper-gui, paper-bedrock, paper-listeners) → 1.10.0; Phase 4 (vault, papi) → 1.11.0. Modules can be added under the current minor as long as they don't break existing API; breaking changes wait for a deliberate `2.0.0`.
 
 ---
 

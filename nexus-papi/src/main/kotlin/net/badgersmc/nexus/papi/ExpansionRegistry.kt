@@ -44,10 +44,13 @@ fun registerNexusExpansions(
         try {
             val resolver = nexus.getBean(cls.kotlin) as PlaceholderResolver
             val adapter = NexusExpansionAdapter(resolver, annotation)
-            adapter.register()
-            registered++
+            if (adapter.register()) {
+                registered++
+            } else {
+                logger.warning("PlaceholderAPI rejected @PapiExpansion ${cls.name} (register() returned false)")
+            }
         } catch (e: Exception) {
-            logger.warning("Failed to register @PapiExpansion ${cls.name}: ${e.message}")
+            logger.log(java.util.logging.Level.WARNING, "Failed to register @PapiExpansion ${cls.name}", e)
         }
     }
     logger.info("Registered $registered PlaceholderAPI expansions")

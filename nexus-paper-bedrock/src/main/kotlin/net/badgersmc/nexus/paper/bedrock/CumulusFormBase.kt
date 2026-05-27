@@ -15,9 +15,17 @@ import java.util.logging.Logger
  *
  * Subclasses implement [buildForm] and the base handles dispatching via
  * [FloodgateApi] plus catching dispatch errors gracefully.
+ *
+ * **Note on optional dependencies:** Cumulus and Floodgate are declared
+ * `compileOnly` in `nexus-paper-bedrock`'s build script. Consumer plugins
+ * that link this module are expected to declare them as `softdepend` in
+ * their `paper-plugin.yml` AND guard usage behind
+ * [PlatformDetectionService.isCumulusAvailable] / `isFloodgateAvailable`.
+ * Loading this class on a server without Cumulus/Floodgate will throw
+ * `NoClassDefFoundError`, by design — the platform-detection probes let
+ * you avoid that path entirely.
  */
 abstract class CumulusFormBase(
-    protected val player: Player,
     protected val logger: Logger,
     protected val lang: LangService
 ) : MenuBase {
@@ -27,16 +35,16 @@ abstract class CumulusFormBase(
     override fun open(player: Player) {
         try {
             val form = buildForm()
-            sendForm(form)
+            sendForm(player, form)
             logger.fine("Opened ${this::class.simpleName} for ${player.name}")
         } catch (e: Exception) {
-            logger.warning("Failed to open Bedrock menu for ${player.name}: ${e.message}")
+            logger.log(java.util.logging.Level.WARNING, "Failed to open Bedrock menu for ${player.name}", e)
             player.sendMessage(lang.msg(MENU_ERROR_KEY))
         }
     }
 
     /** Open for testing — subclasses can override to assert dispatch. */
-    protected open fun sendForm(form: Form) {
+    protected open fun sendForm(player: Player, form: Form) {
         FloodgateApi.getInstance().sendForm(player.uniqueId, form)
     }
 
