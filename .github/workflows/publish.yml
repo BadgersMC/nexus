@@ -29,6 +29,9 @@ jobs:
           # Cache by gradle wrapper version + lockfiles
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
       - name: Verify tag matches root version
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
