@@ -8,7 +8,7 @@
 
 ```
 nexus/
-├── nexus-core/              # DI container, config, coroutines, Hytale commands
+├── nexus-core/              # DI container, config, coroutines, command annotations
 │   ├── build.gradle.kts
 │   └── src/main/kotlin/net/badgersmc/nexus/
 │       ├── core/            # NexusContext, ComponentRegistry, BeanFactory, BeanDefinition
@@ -138,6 +138,6 @@ Semantic versioning. Current: `1.5.3`. Bump major on breaking public-API change.
 
 ## 7. Out of scope (this doc)
 
-- Hytale-specific command adapter internals — owned by `nexus-core/src/main/kotlin/.../commands/adapters/`.
+- (Removed 2.0.0) Hytale command adapters previously lived in `src/main/kotlin/net/badgersmc/nexus/commands/adapters/`. Consumers that need them must pin Nexus to `1.11.0`.
 - CI workflow — owned by `.github/workflows/`.
 - Konsist test — Nexus is a library, not a consumer project; architecture tests are the consumer's responsibility.

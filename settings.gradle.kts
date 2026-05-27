@@ -19,4 +19,4 @@ include("nexus-paper-bedrock")
 include("nexus-paper-listeners")
 include("nexus-vault")
 include("nexus-papi")
-// nexus (root) becomes the nexus-hytale aggregator — leave existing code there
+// Root project is a pure aggregator — no source, no publishable artifact.

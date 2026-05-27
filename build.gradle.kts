@@ -1,104 +1,25 @@
 plugins {
-    kotlin("jvm") version "2.0.21"
+    kotlin("jvm") version "2.0.21" apply false
     kotlin("plugin.serialization") version "2.0.21" apply false
-    `java-library`
-    `maven-publish`
 }
 
 group = "net.badgersmc"
-version = "1.11.0"
+version = "2.0.0"
 
-repositories {
-    mavenCentral()
-    maven {
-        name = "hytale"
-        url = uri("https://maven.hytale.com/pre-release")
-    }
-    mavenLocal()  // last — only for locally-published nexus snapshots
-}
+/**
+ * Root project is a pure multi-module aggregator. All publishable artifacts
+ * live under the `nexus-*` sub-modules. The Hytale support that used to live
+ * here was removed in 2.0.0 — see the changelog / README for the migration
+ * story (TL;DR: there is no more Hytale code anywhere in this repo).
+ */
 
-dependencies {
-    // Kotlin
-    implementation(kotlin("stdlib"))
-    implementation(kotlin("reflect"))
-
-    // Kotlin Coroutines
-    api("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0")
-
-    // Logging
-    implementation("org.slf4j:slf4j-api:2.0.9")
-
-    // Classpath Scanning
-    implementation("io.github.classgraph:classgraph:4.8.174")
-
-    // Configuration (YAML)
-    implementation("com.charleskorn.kaml:kaml:0.59.0")
-
-    // Hytale Server API (provided by server at runtime)
-    compileOnly("com.hypixel.hytale:Server:2026.02.11-891910c77")
-
-    // Testing
-    testImplementation(kotlin("test"))
-    testImplementation("org.junit.jupiter:junit-jupiter:5.10.0")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.0")
-    testImplementation("org.slf4j:slf4j-simple:2.0.9")
-}
-
-tasks.test {
-    useJUnitPlatform()
-}
-
-kotlin {
-    jvmToolchain(21)
-}
-
-publishing {
-    publications {
-        create<MavenPublication>("maven") {
-            groupId = "net.badgersmc"
-            artifactId = "nexus"
-            version = project.version.toString()
-
-            from(components["java"])
-
-            pom {
-                name.set("Nexus")
-                description.set("A lightweight dependency injection and configuration framework for Hytale modding")
-                url.set("https://github.com/BadgersMC/nexus")
-
-                licenses {
-                    license {
-                        name.set("MIT License")
-                        url.set("https://opensource.org/licenses/MIT")
-                    }
-                }
-
-                developers {
-                    developer {
-                        id.set("badgersmc")
-                        name.set("BadgersMC Team")
-                        organization.set("BadgersMC")
-                        organizationUrl.set("https://github.com/BadgersMC")
-                    }
-                }
-
-                scm {
-                    connection.set("scm:git:git://github.com/BadgersMC/nexus.git")
-                    developerConnection.set("scm:git:ssh://github.com/BadgersMC/nexus.git")
-                    url.set("https://github.com/BadgersMC/nexus")
-                }
-            }
-        }
-    }
-
+allprojects {
     repositories {
-        maven {
-            name = "GitHubPackages"
-            url = uri("https://maven.pkg.github.com/BadgersMC/nexus")
-            credentials {
-                username = project.findProperty("gpr.user") as String? ?: System.getenv("GITHUB_ACTOR")
-                password = project.findProperty("gpr.token") as String? ?: System.getenv("GITHUB_TOKEN")
-            }
+        mavenCentral()
+        // Opt-in to a locally-published Nexus snapshot via -PuseMavenLocal=true.
+        // Off by default so CI builds never pick up stale local jars.
+        if (providers.gradleProperty("useMavenLocal").orNull == "true") {
+            mavenLocal()
         }
     }
 }
@@ -107,7 +28,7 @@ publishing {
  * Inject the GitHub Packages publish repository into every sub-module that
  * applies `maven-publish`. Sub-modules keep their own `publications` blocks
  * (so they can pin artifactIds), but the repo wiring + credentials live in
- * one place here so a CI workflow only needs one set of secrets.
+ * one place here so the CI workflow only needs one set of secrets.
  */
 subprojects {
     plugins.withId("maven-publish") {

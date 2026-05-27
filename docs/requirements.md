@@ -50,13 +50,17 @@ Each requirement carries a stable ID. Tasks reference requirements by ID. New re
 
 ---
 
-## Hytale Platform (unchanged)
+## Hytale Platform (deprecated 2026-05-27)
 
-### REQ-001 — Hytale command adapters unchanged
-**Ubiquitous.** THE SYSTEM SHALL continue to support Hytale command types (ASYNC, PLAYER, TARGET_PLAYER, TARGET_ENTITY) via `nexus-core` without modification.
+The Hytale support originally specified here was removed in Nexus 2.0.0.
+Consumers that still need it must pin to `1.11.0`. The REQs are kept (with
+strikethrough) so historic IDs are not reused.
 
-### REQ-002 — Hytale API dependency unchanged
-**Ubiquitous.** THE SYSTEM SHALL continue to compile against `com.hypixel.hytale:Server:2026.02.11-891910c77` as a `compileOnly` dependency.
+### ~~REQ-001 — Hytale command adapters unchanged~~ _(deprecated 2026-05-27)_
+~~**Ubiquitous.** THE SYSTEM SHALL continue to support Hytale command types (ASYNC, PLAYER, TARGET_PLAYER, TARGET_ENTITY) via `nexus-core` without modification.~~
+
+### ~~REQ-002 — Hytale API dependency unchanged~~ _(deprecated 2026-05-27)_
+~~**Ubiquitous.** THE SYSTEM SHALL continue to compile against `com.hypixel.hytale:Server:2026.02.11-891910c77` as a `compileOnly` dependency.~~
 
 ---
 
