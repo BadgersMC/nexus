@@ -29,6 +29,20 @@ Roadmap and acceptance REQs: see [`docs/roadmap.md`](docs/roadmap.md) and [`docs
 repositories {
     mavenCentral()
     maven("https://repo.papermc.io/repository/maven-public/")
+
+    // GitHub Packages — Nexus releases live here. Requires a token; see
+    // "Consuming from GitHub Packages" below.
+    maven {
+        name = "GitHubPackages"
+        url = uri("https://maven.pkg.github.com/BadgersMC/nexus")
+        credentials {
+            username = providers.gradleProperty("gpr.user").orNull
+                ?: System.getenv("GITHUB_ACTOR")
+            password = providers.gradleProperty("gpr.token").orNull
+                ?: System.getenv("GITHUB_TOKEN")
+        }
+    }
+
     // Opt-in to local-published snapshots for dev:
     // -PuseMavenLocal=true on the command line
 }
@@ -482,6 +496,44 @@ tasks.shadowJar {
     }
 }
 ```
+
+## Consuming from GitHub Packages
+
+Nexus releases ship to [GitHub Packages](https://github.com/orgs/BadgersMC/packages?repo_name=nexus). The repo is private; consumer builds need a token that has `read:packages` scope.
+
+### Local development
+
+Add to `~/.gradle/gradle.properties` (one-time):
+
+```properties
+gpr.user=<your-github-username>
+gpr.token=<personal-access-token-with-read:packages>
+```
+
+Then `./gradlew build` resolves Nexus from GHP normally. The token never enters the project repo.
+
+### GitHub Actions on a consumer plugin
+
+Add to the workflow that builds the plugin:
+
+```yaml
+- name: Build
+  env:
+    GITHUB_ACTOR: ${{ github.actor }}
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # already has read:packages
+  run: ./gradlew build
+```
+
+The `GITHUB_TOKEN` is auto-provided by Actions and has read access to packages in the same org.
+
+### Publishing a new Nexus release
+
+1. Bump `version` in `build.gradle.kts` (root + check sub-modules pull from `rootProject.version`).
+2. Commit, push, open PR, merge to `main`.
+3. Tag the merge commit: `git tag v1.12.0 && git push origin v1.12.0`.
+4. The `Publish to GitHub Packages` workflow fires, runs the tests, and publishes every module to `maven.pkg.github.com/BadgersMC/nexus`.
+
+The workflow checks that the tag string matches the project version and fails fast otherwise. Manual publishes are also possible via the Actions tab (`workflow_dispatch`).
 
 ## License
 

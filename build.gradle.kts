@@ -102,3 +102,28 @@ publishing {
         }
     }
 }
+
+/**
+ * Inject the GitHub Packages publish repository into every sub-module that
+ * applies `maven-publish`. Sub-modules keep their own `publications` blocks
+ * (so they can pin artifactIds), but the repo wiring + credentials live in
+ * one place here so a CI workflow only needs one set of secrets.
+ */
+subprojects {
+    plugins.withId("maven-publish") {
+        configure<PublishingExtension> {
+            repositories {
+                maven {
+                    name = "GitHubPackages"
+                    url = uri("https://maven.pkg.github.com/BadgersMC/nexus")
+                    credentials {
+                        username = project.findProperty("gpr.user") as String?
+                            ?: System.getenv("GITHUB_ACTOR")
+                        password = project.findProperty("gpr.token") as String?
+                            ?: System.getenv("GITHUB_TOKEN")
+                    }
+                }
+            }
+        }
+    }
+}
