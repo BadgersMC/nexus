@@ -1,72 +1,54 @@
-# Nexus — DI Framework for Hytale & Paper
+# Nexus — Application Framework for Paper & Hytale
 
-**Nexus** is a Kotlin-first application framework providing automatic dependency injection with classpath scanning, YAML configuration management, command auto-discovery, and coroutine infrastructure backed by Java 21 virtual threads.
+**Nexus** is a Kotlin-first application framework for Minecraft server plugins (Paper) and Hytale mods. It bundles dependency injection with classpath scanning, YAML configuration, command auto-discovery, coroutine infrastructure, and a growing set of opt-in modules that handle the boilerplate every plugin reinvents: i18n, persistence, schedulers, GUIs, Bedrock forms, Vault, PlaceholderAPI, and more.
 
-Nexus ships as two modules:
-- **`nexus-core`** — DI container, config system, coroutine infrastructure, and Hytale command adapters
-- **`nexus-paper`** — Paper Brigadier command system, `BukkitDispatcher`, and Paper-specific extensions
+## Modules
 
-## Features
+| Module | Version | Purpose |
+|---|---|---|
+| **`nexus-core`** | 1.11.0 | DI container, config system, coroutine infrastructure, Hytale command adapters |
+| **`nexus-paper`** | 1.11.0 | Paper Brigadier command system, `BukkitDispatcher`, Paper extensions |
+| **`nexus-resources`** | 1.11.0 | Bundled-resource extraction (`ResourceExtractor.extractIfMissing` / `extractDirectory` / `overwriteIfNewerVersion`) — foundation for i18n + migrations |
+| **`nexus-i18n`** | 1.11.0 | MiniMessage-backed YAML translator (`LangService`), `@LangFile` annotation, per-locale file with bundled-default overlay |
+| **`nexus-persistence`** | 1.11.0 | `DatabaseFactory.open` (HikariCP, SQLite/MariaDB/Postgres) + idempotent versioned `MigrationRunner` |
+| **`nexus-scheduler`** | 1.11.0 | `NexusScheduler` with `AutoCloseable` handles, `cancelAll()` on shutdown, thread guards |
+| **`nexus-paper-loader`** | 1.11.0 | Java-only abstract `NexusPaperPluginLoader` declaring the standard runtime library set |
+| **`nexus-paper-gui`** | 1.11.0 | `ItemBuilder` DSL, `LivePollingMenu`, `PaginatedListMenu` (IFramework + Adventure) |
+| **`nexus-paper-bedrock`** | 1.11.0 | `PlatformDetectionService` (reflective Floodgate probe) + `CumulusFormBase` |
+| **`nexus-paper-listeners`** | 1.11.0 | `@Listener` marker + `registerNexusListeners` scanner (auto-registers Bukkit listeners) |
+| **`nexus-vault`** | 1.11.0 | `EconomyProvider` port + `VaultEconomyAdapter` + `VaultHealth` + `VaultDegradedEvent` |
+| **`nexus-papi`** | 1.11.0 | `@PapiExpansion` + `PlaceholderResolver` + auto-registration with PlaceholderAPI |
 
-### Dependency Injection with Classpath Scanning
-
-- **Automatic component discovery** — `@Component`, `@Service`, `@Repository` found at startup via [ClassGraph](https://github.com/classgraph/classgraph)
-- **Constructor injection** — dependencies resolved automatically through primary constructors
-- **Lifecycle management** — `@PostConstruct` and `@PreDestroy` hooks (supports suspend functions)
-- **Scopes** — Singleton (default) and Prototype via `@Scope`
-- **Polymorphic resolution** — beans resolved by interface or superclass type
-- **Qualifier support** — `@Qualifier("name")` to disambiguate multiple beans of the same type
-- **External beans** — pre-built instances registered via `externalBeans` map before scanning
-- **Thread-safe** — concurrent access with double-check locking for singletons
-
-### Coroutine Infrastructure
-
-- **Virtual thread dispatchers** — Java 21 virtual threads with automatic classloader propagation
-- **Per-plugin scopes** — each plugin gets its own `CoroutineScope` with `SupervisorJob`
-- **Injectable** — scope and dispatchers auto-registered as beans
-- **Lifecycle-managed** — scopes cancelled automatically on context shutdown
-- **Shared utilities** — `withIO` and `withDefault` dispatcher helpers
-
-### Configuration System
-
-- **Auto-discovery** — `@ConfigFile` classes found by classpath scanning, loaded, and registered as injectable beans
-- **YAML format** — human-friendly config files with comment preservation
-- **Annotation-based** — `@ConfigFile`, `@ConfigName`, `@Comment`, `@Transient`
-- **Type-safe loading** — automatic type conversion for primitives, collections, nested objects
-- **Hot reload** — reload configs at runtime without restarting
-- **Centralized management** — `ConfigManager` for loading, saving, and caching all configs
-
-### Command System — Hytale (nexus-core)
-
-- **Annotation-based** — `@Command` classes with `@Arg` parameters auto-discovered
-- **Type-safe arguments** — map Kotlin types to Hytale arguments via `ArgumentResolver`
-- **Adapters** — AsyncCommand, PlayerCommand, TargetPlayerCommand, TargetEntityCommand
-- **Suspend support** — command execute methods can be suspend functions
-- **Context injection** — `@Context` parameters for CommandContext, World, Store, etc.
-
-### Command System — Paper Brigadier (nexus-paper)
-
-- **`@Command` + `@Subcommand`** — single command class with multiple subcommand methods
-- **Paper Brigadier integration** — builds Mojang `LiteralCommandNode` trees automatically
-- **Multi-arg support** — bottom-up Brigadier node construction (handles `then()` build semantics correctly)
-- **`@Arg` type resolution** — built-in resolvers for String, Int, Double, Float, Boolean, Player
-- **`@Context` injection** — Player, CommandSender, CommandSourceStack, Server
-- **`@Permission`** — per-subcommand permission checks
-- **`@PlayerOnly`** — restrict subcommands to player senders
-- **`@Async`** — run subcommands on coroutine scope instead of main thread
-- **`BukkitDispatcher`** — coroutine dispatcher that runs on Paper's main thread (skips dispatch when already on main thread)
+Roadmap and acceptance REQs: see [`docs/roadmap.md`](docs/roadmap.md) and [`docs/requirements.md`](docs/requirements.md).
 
 ## Quick Start
 
-### 1. Add Nexus to your project
+### 1. Add the modules you need
 
 ```kotlin
-dependencies {
-    // Core DI + config + coroutines
-    implementation("net.badgersmc:nexus-core:1.5.3")
+repositories {
+    mavenCentral()
+    maven("https://repo.papermc.io/repository/maven-public/")
+    // Opt-in to local-published snapshots for dev:
+    // -PuseMavenLocal=true on the command line
+}
 
-    // Paper command system + BukkitDispatcher (optional)
-    implementation("net.badgersmc:nexus-paper:1.5.3")
+dependencies {
+    // Core DI + config + coroutines — always needed
+    implementation("net.badgersmc:nexus-core:1.11.0")
+
+    // Pick whichever extras you want:
+    implementation("net.badgersmc:nexus-paper:1.11.0")            // Paper commands
+    implementation("net.badgersmc:nexus-resources:1.11.0")        // Bundled resource extraction
+    implementation("net.badgersmc:nexus-i18n:1.11.0")             // MiniMessage i18n
+    implementation("net.badgersmc:nexus-persistence:1.11.0")      // DB + migrations
+    implementation("net.badgersmc:nexus-scheduler:1.11.0")        // Bukkit scheduler facade
+    implementation("net.badgersmc:nexus-paper-gui:1.11.0")        // IFramework GUIs
+    implementation("net.badgersmc:nexus-paper-bedrock:1.11.0")    // Cumulus / Floodgate
+    implementation("net.badgersmc:nexus-paper-listeners:1.11.0")  // @Listener auto-register
+    implementation("net.badgersmc:nexus-vault:1.11.0")            // Vault economy
+    implementation("net.badgersmc:nexus-papi:1.11.0")             // PlaceholderAPI
+    implementation("net.badgersmc:nexus-paper-loader:1.11.0")     // Shared PluginLoader
 }
 ```
 
@@ -74,141 +56,300 @@ dependencies {
 
 ```kotlin
 @Repository
-class PlayerRepository(private val database: Database) {
-    suspend fun findPlayer(id: UUID): PlayerStats? = withIO {
-        // database query
-    }
+class PlayerRepository(private val database: DataSource) {
+    fun findPlayer(id: UUID): PlayerStats? { /* ... */ }
 }
 
 @Service
 class PlayerService(private val repository: PlayerRepository) {
     @PostConstruct
-    fun init() {
-        println("PlayerService initialized!")
-    }
-
-    suspend fun getPlayer(id: UUID): PlayerStats? {
-        return repository.findPlayer(id)
-    }
+    fun init() { /* ... */ }
 }
 ```
 
-### 3. Create a Nexus context
+### 3. Build a NexusContext + register the extras you wired
 
 ```kotlin
-val nexus = NexusContext.create(
-    basePackage = "net.example.myplugin",
-    classLoader = this::class.java.classLoader,
-    configDirectory = dataDirectory,
-    contextName = "MyPlugin",
-    externalBeans = mapOf(
-        "plugin" to this,
-        "database" to database
+override fun onEnable() {
+    val nexus = NexusContext.create(
+        basePackage = "net.example.myplugin",
+        classLoader = this::class.java.classLoader,
+        configDirectory = dataFolder.toPath(),
+        contextName = "MyPlugin",
+        externalBeans = mapOf("plugin" to this)
     )
-)
 
-// Retrieve auto-discovered beans
-val playerService = nexus.getBean<PlayerService>()
-val config = nexus.getBean<MyPluginConfig>()
+    // Wire i18n
+    val lang = LangService(this, Locale("en_US"), MyPluginLang::class.java)
+    nexus.registerBean("langService", LangService::class, lang)
 
-// Cleanup on disable
-nexus.close()
+    // Wire persistence
+    val ds = DatabaseFactory.open(DatabaseSpec.Sqlite(File(dataFolder, "plugin.db")))
+    MigrationRunner(ds, "migrations", this::class.java.classLoader).runAll()
+    nexus.registerBean("dataSource", DataSource::class, ds as DataSource)
+
+    // Wire scheduler
+    val scheduler = NexusScheduler(this)
+    nexus.registerBean("nexusScheduler", NexusScheduler::class, scheduler)
+
+    // Register Paper commands + @Listener beans
+    nexus.registerPaperCommands(basePackage = "net.example.myplugin", classLoader = ..., plugin = this)
+    registerNexusListeners(basePackage = "net.example.myplugin", classLoader = ..., plugin = this, nexus = nexus)
+
+    // Cleanup on disable
+    saveState(scheduler)
+}
+
+override fun onDisable() {
+    nexus?.close()           // cancels scope, fires @PreDestroy
+    scheduler?.cancelAll()   // cancels every outstanding Bukkit task
+}
 ```
 
-### 4. Register Paper commands (optional)
+## Module guides
 
-```kotlin
-// In onEnable(), after creating the NexusContext:
-nexus.registerPaperCommands(
-    basePackage = "net.example.myplugin",
-    classLoader = this::class.java.classLoader,
-    plugin = this
-)
-```
+### `nexus-core` — Dependency injection + config
 
-## Paper Commands
+- **Component discovery** — `@Component`, `@Service`, `@Repository` auto-discovered via [ClassGraph](https://github.com/classgraph/classgraph)
+- **Constructor injection** — dependencies resolved through primary constructors
+- **Lifecycle** — `@PostConstruct` / `@PreDestroy` (supports suspend)
+- **Scopes** — Singleton (default) or `@Scope(ScopeType.PROTOTYPE)`
+- **Polymorphic** — beans resolved by interface or superclass type
+- **Qualifiers** — `@Qualifier("name")` to disambiguate
+- **External beans** — pre-built instances registered via `externalBeans` before scanning
+- **Coroutines** — Java 21 virtual thread dispatchers with classloader propagation, per-plugin `CoroutineScope` with `SupervisorJob`, `BukkitDispatcher` for Paper main-thread work
+- **Config** — `@ConfigFile`, `@ConfigName`, `@Comment`, `@Transient`; YAML with comment preservation; auto-discovered and registered as beans; `ConfigManager` for centralised reload/save
 
-Define a single `@Command` class with `@Subcommand` methods:
+### `nexus-paper` — Paper Brigadier commands
 
 ```kotlin
 @Command(name = "sg", description = "Survival Games", permission = "sg.use")
-class SGCommand(
-    private val gameManager: GameManager,  // DI works!
-    private val config: GameConfig
-) {
+class SGCommand(private val gameManager: GameManager) {
     @Subcommand("join")
     @PlayerOnly
     fun join(@Context player: Player, @Arg("arena") arena: String) {
         gameManager.joinGame(player, arena)
     }
 
-    @Subcommand("create")
+    @Subcommand("admin create")               // multi-segment paths work
     @Permission("sg.admin")
-    fun create(
-        @Context player: Player,
-        @Arg("name") name: String,
-        @Arg("radius") radius: Int  // multi-arg commands work correctly
-    ) {
-        gameManager.createArena(player, name, radius)
-    }
+    fun create(@Context p: Player, @Arg("name") n: String, @Arg("radius") r: Int) { /* ... */ }
 
     @Subcommand("stats")
-    @Async
-    suspend fun stats(@Context player: Player, @Arg("target") target: Player) {
-        val stats = statsService.getStats(target)
-        player.sendMessage(stats.format())
-    }
+    @Async                                    // coroutine scope, not main thread
+    suspend fun stats(@Context p: Player, @Arg("target") t: Player) { /* ... */ }
 }
 ```
 
-### Supported Paper @Context types
+Built-in resolvers: `String`, `Int`, `Long`, `Double`, `Float`, `Boolean`, `Player`. `@Context` types: `Player`, `CommandSender`, `CommandSourceStack`, `Server`.
 
-| Type | Description |
-|---|---|
-| `Player` | The player who ran the command |
-| `CommandSender` | Generic sender (player or console) |
-| `CommandSourceStack` | Paper's raw command source |
-| `Server` | The server instance |
+### `nexus-resources` — Bundled defaults
 
-### BukkitDispatcher
+```kotlin
+// Extract a single resource on first run; never overwrites an existing user file.
+ResourceExtractor.extractIfMissing(plugin, "lang/en_US.yml")
 
-Run coroutines on the Paper main thread:
+// Extract every file under a JAR prefix (preserves directory structure).
+ResourceExtractor.extractDirectory(plugin, "migrations", File(plugin.dataFolder, "migrations"))
+
+// Opt-in overwrite when a bundled version is newer.
+ResourceExtractor.overwriteIfNewerVersion(plugin, "lang/en_US.yml", target,
+    currentVersion = 1, bundledVersion = 2)
+```
+
+Defends against zip-slip path traversal in `extractDirectory`.
+
+### `nexus-i18n` — MiniMessage translator
+
+```kotlin
+@LangFile(resourcePrefix = "lang", defaultLocale = "en_US")
+class MyPluginLang
+
+// In onEnable:
+val lang = LangService(plugin, Locale(config.lang.locale), MyPluginLang::class.java)
+nexus.registerBean("langService", LangService::class, lang)
+
+// Anywhere LangService is injected:
+player.sendMessage(lang.msg("admin.import.result",
+    "created" to r.created,
+    "skipped" to r.skipped
+))
+```
+
+Full MiniMessage syntax in the lang file: `<red>`, `<gradient:#A:#B>`, `<rainbow>`, `<hover:show_text:'…'>`, `<click:run_command:/foo>`. Bundled defaults are overlaid onto a partial user file so missing keys still resolve. `LangService.legacy(...)` returns a §-serialised string for Cumulus/legacy paths; `LangService.raw(...)` returns the unrendered template for nested placeholders.
+
+### `nexus-persistence` — JDBC + migrations
+
+```kotlin
+// Declarative spec — sealed type with Sqlite, MariaDB, Postgres, JdbcUrl variants
+val ds = DatabaseFactory.open(
+    DatabaseSpec.MariaDB(
+        host = "db.example", port = 3306, database = "mydb",
+        username = "user", password = "secret",
+        params = mapOf("useSSL" to "true", "serverTimezone" to "UTC")
+    )
+)
+
+// Versioned migrations from src/main/resources/migrations/V001__init.sql etc.
+MigrationRunner(ds, "migrations", plugin::class.java.classLoader).runAll()
+```
+
+Pool sizing baked in: SQLite max=1 (single-writer), networked DBs default to 10. URL params are URL-encoded. Migration discovery walks every jar on the classloader (not just the runner's own jar) — picks up migrations shipped from dependency jars. Duplicate version numbers throw at discovery time. Statement splitter handles quoted literals and `--` line comments.
+
+### `nexus-scheduler` — Bukkit scheduler facade
 
 ```kotlin
 @Service
-class MyService(private val bukkitDispatcher: BukkitDispatcher) {
-    suspend fun doMainThreadWork() {
-        withContext(bukkitDispatcher) {
-            // Safe to call Bukkit API here
-            player.teleport(location)
+class MyService(private val scheduler: NexusScheduler) {
+    fun start() {
+        // Returns AutoCloseable — close() cancels the underlying Bukkit task.
+        val task = scheduler.runRepeating(0L, 20L) {
+            // every second, on main thread
         }
+        // Async variant runs off-thread:
+        scheduler.runRepeatingAsync(0L, 100L) {
+            // every 5 seconds, off main thread
+        }
+    }
+}
+
+// In onDisable: scheduler.cancelAll() — closes every outstanding handle.
+```
+
+Thread guards: `scheduler.requireMainThread()` / `scheduler.requireAsyncThread()` throw `IllegalStateException` when called on the wrong thread.
+
+### `nexus-paper-gui` — GUI helpers
+
+```kotlin
+// Build Adventure-aware ItemStacks with one DSL call:
+val icon = itemStack(Material.EMERALD) {
+    name(lang.msg("entry.name"))
+    lore(lang.msg("entry.line.1"), lang.msg("entry.line.2"))
+    glow()
+}
+
+// Subclass LivePollingMenu for any GUI that needs periodic redraws —
+// auto-cancels its scheduler task when the player closes the inventory.
+class AuctionBrowser(scheduler: NexusScheduler, ...) : LivePollingMenu(scheduler) {
+    override fun title() = lang.msg("gui.auctions.title")
+    override fun render(gui: ChestGui) { /* repaint from current state */ }
+}
+
+// Or PaginatedListMenu for typed list browsers — handles pages + sort + close button.
+class MemberList(scheduler: NexusScheduler, ...) : PaginatedListMenu<UUID>(scheduler, rows = 6) {
+    override fun items(): List<UUID> = shop.trusted.toList()
+    override fun renderEntry(item: UUID): ItemStack = itemStack(...)
+    // override prevIcon / nextIcon / pageIndicatorIcon / closeIcon
+}
+```
+
+### `nexus-paper-bedrock` — Bedrock / Floodgate / Cumulus
+
+```kotlin
+@Service
+class MyMenuFactory(private val platform: PlatformDetectionService) {
+    fun open(player: Player) {
+        if (platform.isBedrockPlayer(player) && platform.isCumulusAvailable()) {
+            BedrockForm(logger, lang).open(player)
+        } else {
+            JavaMenu().open(player)
+        }
+    }
+}
+
+class BedrockForm(logger: Logger, lang: LangService) : CumulusFormBase(logger, lang) {
+    override fun buildForm(): Form = CustomForm.builder().title("…").build()
+}
+```
+
+Cumulus and Floodgate are declared `compileOnly`. Always guard via `PlatformDetectionService` before instantiating a `CumulusFormBase` — loading the class on a server without Cumulus throws `NoClassDefFoundError` by design.
+
+### `nexus-paper-listeners` — `@Listener` auto-register
+
+```kotlin
+@Component
+@Listener
+class MyShopListener(private val shops: ShopRepository) : org.bukkit.event.Listener {
+    @EventHandler
+    fun onClick(event: PlayerInteractEvent) { /* ... */ }
+}
+
+// In onEnable, after creating the NexusContext:
+registerNexusListeners(
+    basePackage = "net.example.myplugin",
+    classLoader = this::class.java.classLoader,
+    plugin = this,
+    nexus = nexus
+)
+```
+
+No more `@PostConstruct fun register() { Bukkit.getPluginManager().registerEvents(this, plugin) }` boilerplate in every listener.
+
+### `nexus-vault` — Economy port
+
+```kotlin
+@Service
+class ShopTradeService(private val economy: EconomyProvider, private val health: VaultHealth) {
+    fun execute(buyer: UUID, price: Double): Boolean {
+        if (!health.isAvailable) return false
+        return economy.withdraw(buyer, price)
+    }
+}
+
+// VaultDegradedEvent fires when the Vault provider disappears at runtime —
+// listen to gate auctions / rent collection / shop trades.
+```
+
+`VaultEconomyAdapter` re-resolves the Vault registration on every call so plugins that re-register the provider at runtime work cleanly. Rejects negative + non-finite amounts on `has` / `withdraw` / `deposit`.
+
+### `nexus-papi` — PlaceholderAPI
+
+```kotlin
+@Component
+@PapiExpansion(identifier = "myplugin", author = "BadgersMC", version = "1.0.0")
+class MyExpansion(private val stats: StatsService) : PlaceholderResolver {
+    override fun resolve(player: OfflinePlayer?, params: String): String? = when (params) {
+        "kills" -> stats.kills(player?.uniqueId).toString()
+        else -> null
+    }
+}
+
+// In onEnable, after creating the NexusContext:
+registerNexusExpansions(basePackage = "net.example.myplugin", classLoader = ..., nexus = nexus)
+```
+
+Silently no-ops when PlaceholderAPI is not installed.
+
+### `nexus-paper-loader` — Shared `PluginLoader`
+
+```java
+// src/main/java/.../MyPluginLoader.java — must stay Java; Paper loads this
+// before any Kotlin classes are on the classpath.
+public final class MyPluginLoader extends NexusPaperPluginLoader {
+    @Override
+    @NotNull
+    protected List<String> additionalLibraries() {
+        return List.of(
+            "com.zaxxer:HikariCP:5.1.0",
+            "org.xerial:sqlite-jdbc:3.45.1.0"
+        );
     }
 }
 ```
 
-`BukkitDispatcher` skips dispatch when already on the main thread — no scheduling overhead.
-
-## Hytale Commands
-
-For Hytale mods, pass `commandRegistry` to `NexusContext.create()`:
-
-```kotlin
-val context = NexusContext.create(
-    basePackage = "net.example.mymod",
-    classLoader = this::class.java.classLoader,
-    commandRegistry = this.commandRegistry  // Hytale's CommandRegistry
-)
+```yaml
+# paper-plugin.yml
+loader: net.example.myplugin.MyPluginLoader
 ```
 
-### Define a Hytale command
+The Nexus base provides the standard runtime library set: kotlin-stdlib, kotlin-reflect, kotlinx-coroutines-core-jvm, kaml-jvm, classgraph, slf4j-api. Uses `repo1.maven.org` directly to bypass server-side Maven mirror outages.
+
+## Hytale support
+
+The Hytale command adapter from earlier Nexus releases is still in `nexus-core`:
 
 ```kotlin
-@Command(
-    name = "heal",
-    description = "Heal a player",
-    permission = "admin.heal",
-    type = CommandType.PLAYER
-)
+@Command(name = "heal", description = "Heal a player", permission = "admin.heal", type = CommandType.PLAYER)
 class HealCommand(private val healthService: HealthService) {
     fun execute(
         @Context context: CommandContext,
@@ -221,226 +362,124 @@ class HealCommand(private val healthService: HealthService) {
         context.sendMessage(Message.raw("Healed for $amount HP"))
     }
 }
+
+val context = NexusContext.create(
+    basePackage = "net.example.mymod",
+    classLoader = this::class.java.classLoader,
+    commandRegistry = this.commandRegistry  // Hytale's CommandRegistry
+)
 ```
 
-### Hytale command types
+Hytale command types: `ASYNC`, `PLAYER`, `TARGET_PLAYER`, `TARGET_ENTITY` — see the source for context-parameter rules per type.
 
-| Type | Thread | Context Parameters |
+## Annotations cheat-sheet
+
+| Annotation | Module | Description |
 |---|---|---|
-| `ASYNC` | Background | `CommandContext` |
-| `PLAYER` | World thread | `CommandContext`, `World`, `Store<EntityStore>`, `PlayerRef`, `Ref<EntityStore>` |
-| `TARGET_PLAYER` | World thread | Same as PLAYER (target player's ref) |
-| `TARGET_ENTITY` | World thread | `CommandContext`, `World`, `Store<EntityStore>`, `ObjectList<Ref<EntityStore>>` |
-
-## Configuration System
-
-### Define a config class
-
-```kotlin
-@ConfigFile("mymod")
-@Comment("My Mod Configuration")
-class MyModConfig {
-    @Comment("Enable debug mode")
-    var debug: Boolean = false
-
-    @ConfigName("max-players")
-    @Comment("Maximum players allowed")
-    var maxPlayers: Int = 100
-
-    @Comment("Database settings")
-    var database: DatabaseSettings = DatabaseSettings()
-
-    class DatabaseSettings {
-        var host: String = "localhost"
-        var port: Int = 3306
-    }
-}
-```
-
-### Generated YAML
-
-```yaml
-# My Mod Configuration
-
-# Enable debug mode
-debug: false
-
-# Maximum players allowed
-max-players: 100
-
-# Database settings
-database:
-  host: "localhost"
-  port: 3306
-```
-
-### Injecting configs
-
-```kotlin
-@Service
-class GameService(private val config: MyModConfig) {
-    fun getMaxPlayers() = config.maxPlayers
-}
-
-@Service
-class AdminService(private val configManager: ConfigManager) {
-    fun reloadAll() = configManager.reloadAll()
-}
-```
-
-## Coroutine Infrastructure
-
-Nexus provides centralized coroutine support backed by Java 21 virtual threads. When you pass a `classLoader` to `NexusContext.create()`, Nexus automatically creates a virtual thread executor, coroutine dispatcher, and plugin-scoped `CoroutineScope`.
-
-### Why this matters
-
-Java 21 virtual threads inherit the system classloader, not the plugin's. When a coroutine continuation tries to load a plugin class on a virtual thread, it fails. Nexus wraps every virtual thread task to propagate the correct classloader automatically.
-
-### Injecting the scope
-
-```kotlin
-@Service
-class MyService(private val scope: CoroutineScope) {
-    fun doAsyncWork() {
-        scope.launch {
-            // runs on virtual threads with correct classloader
-        }
-    }
-}
-```
-
-### Suspend lifecycle methods
-
-`@PostConstruct` and `@PreDestroy` methods can be suspend functions:
-
-```kotlin
-@Service
-class CacheService {
-    @PostConstruct
-    suspend fun warmUp() { /* async initialization */ }
-
-    @PreDestroy
-    suspend fun flush() { /* async cleanup */ }
-}
-```
-
-### Shutdown lifecycle
-
-When `context.close()` is called:
-
-1. Cancel the coroutine scope (stops all running coroutines)
-2. Invoke `@PreDestroy` on all singletons
-3. Shutdown the virtual thread executor
-4. Clear the bean registry
-
-## Annotations Reference
-
-### Component Discovery
-
-| Annotation | Description |
-|---|---|
-| `@Component` | Generic managed component |
-| `@Service` | Service layer component |
-| `@Repository` | Data access layer component |
-
-### Dependency Injection
-
-| Annotation | Description |
-|---|---|
-| `@Inject` | Mark injection points (optional for constructors) |
-| `@Qualifier("name")` | Disambiguate between multiple beans of same type |
-
-### Lifecycle
-
-| Annotation | Description |
-|---|---|
-| `@PostConstruct` | Called after DI (supports suspend) |
-| `@PreDestroy` | Called before shutdown (supports suspend) |
-| `@Scope(ScopeType)` | SINGLETON (default) or PROTOTYPE |
-
-### Configuration
-
-| Annotation | Description |
-|---|---|
-| `@ConfigFile("name")` | Maps class to `name.yaml` |
-| `@ConfigName("key")` | Custom YAML key name |
-| `@Comment("text")` | YAML comment above the field |
-| `@Transient` | Excluded from save/load |
-
-### Commands (Hytale)
-
-| Annotation | Description |
-|---|---|
-| `@Command(...)` | Command class with metadata (name, description, permission, aliases, type) |
-| `@Arg("name", ...)` | User-provided argument |
-| `@Context` | Runtime injection (CommandContext, World, Store, etc.) |
-
-### Commands (Paper)
-
-| Annotation | Description |
-|---|---|
-| `@Command(...)` | Root command with name, description, permission |
-| `@Subcommand("path")` | Subcommand method (space-separated path, e.g. `"admin setup"`) |
-| `@Arg("name")` | Brigadier argument with auto-resolved type |
-| `@Context` | Runtime injection (Player, CommandSender, CommandSourceStack, Server) |
-| `@Permission("node")` | Per-subcommand permission |
-| `@PlayerOnly` | Restrict to player senders |
-| `@Async` | Run on coroutine scope instead of main thread |
+| `@Component`, `@Service`, `@Repository` | core | Auto-discovered DI bean |
+| `@Inject`, `@Qualifier("name")` | core | Mark injection point / disambiguate |
+| `@PostConstruct`, `@PreDestroy`, `@Scope(...)` | core | Lifecycle and scope |
+| `@ConfigFile("name")`, `@ConfigName`, `@Comment`, `@Transient` | core | Config mapping |
+| `@Command`, `@Arg`, `@Context` | core / paper | Command class + parameters |
+| `@Subcommand("path")`, `@Permission`, `@PlayerOnly`, `@Async`, `@Suggests` | paper | Paper Brigadier extras |
+| `@LangFile(resourcePrefix, defaultLocale)` | i18n | Marker class for lang resource location |
+| `@Listener` | paper-listeners | Auto-register a Bukkit `Listener` |
+| `@PapiExpansion(identifier, author, version)` | papi | Auto-register a `PlaceholderResolver` |
 
 ## Architecture
 
 ```
-nexus-core/
-├── core/
-│   ├── NexusContext          Main container — lifecycle, bean management
-│   ├── ComponentRegistry     Bean definitions + singleton cache
-│   ├── BeanFactory           Constructor injection, lifecycle hooks
-│   └── BeanDefinition        Bean metadata (name, type, scope, factory)
-├── scanning/
-│   └── ComponentScanner      ClassGraph-based classpath scanning
-├── annotations/              @Component, @Service, @Repository, @Inject, etc.
-├── coroutines/
-│   ├── NexusDispatchers      Virtual thread executor + classloader propagation
-│   ├── NexusScope            Per-plugin CoroutineScope with SupervisorJob
-│   └── CoroutineExtensions   withIO, withDefault helpers
-├── config/
-│   ├── ConfigManager         Centralized config loading, saving, caching
-│   ├── ConfigLoader          YAML serialization with reflection
-│   └── Annotations           @ConfigFile, @ConfigName, @Comment, @Transient
-└── commands/                 Hytale command adapters
-    ├── CommandScanner         ClassGraph-based command discovery
-    ├── CommandRegistry        Bridges to Hytale's CommandRegistry
-    └── adapters/              Async, Player, TargetPlayer, TargetEntity
+nexus-core/                       Phase 0
+├── core/             NexusContext, ComponentRegistry, BeanFactory, BeanDefinition
+├── scanning/         ComponentScanner (ClassGraph)
+├── annotations/      @Component, @Service, @Repository, @Inject, …
+├── coroutines/       NexusDispatchers, NexusScope, CoroutineExtensions
+├── config/           ConfigManager, ConfigLoader, @ConfigFile / @ConfigName / @Comment / @Transient
+└── commands/         Hytale command scanner + adapters
 
-nexus-paper/
-├── BukkitDispatcher           Main-thread coroutine dispatcher
-├── PaperNexusExtensions       registerPaperCommands() extension
-└── commands/
-    ├── PaperCommandScanner    Scans @Command + @Subcommand methods
-    ├── PaperCommandRegistry   Builds Brigadier trees, registers with Paper
-    ├── PaperCommandDefinition Metadata for scanned commands
-    ├── annotations/           @Subcommand, @Permission, @PlayerOnly, @Async
-    └── arguments/
-        ├── PaperArgumentResolver   Interface for type → Brigadier arg mapping
-        └── PaperArgumentResolvers  Registry (String, Int, Double, Float, Boolean, Player)
+nexus-paper/                      Phase 0
+├── BukkitDispatcher              Main-thread coroutine dispatcher
+├── PaperNexusExtensions          registerPaperCommands()
+└── commands/                     Paper Brigadier scanner + registry + resolvers
+
+nexus-resources/                  Phase 1
+└── ResourceExtractor             extractIfMissing / extractDirectory / overwriteIfNewerVersion
+
+nexus-i18n/                       Phase 1
+├── LangFile, Locale              Marker annotation + locale id wrapper
+└── LangService                   YAML + MiniMessage + bundled-default overlay
+
+nexus-persistence/                Phase 2
+├── DatabaseSpec                  Sealed (Sqlite, MariaDB, Postgres, JdbcUrl)
+├── DatabaseFactory               HikariCP wrapper with pool-sizing rules
+├── MigrationRunner               Versioned idempotent migration runner
+└── DataSourceProvider            Optional multi-DS port
+
+nexus-scheduler/                  Phase 2
+├── SchedulerBackend              Bukkit / Test backend abstraction
+└── NexusScheduler                run* → AutoCloseable, cancelAll, thread guards
+
+nexus-paper-loader/               Phase 2 (Java only)
+└── NexusPaperPluginLoader        Standard runtime library set + additionalLibraries() hook
+
+nexus-paper-gui/                  Phase 3
+├── MenuBase                      Marker interface
+├── ItemBuilder                   itemStack { … } DSL
+├── LivePollingMenu               Refresh-on-tick GUI base
+└── PaginatedListMenu             Typed list browser with controls
+
+nexus-paper-bedrock/              Phase 3
+├── PlatformDetectionService      Reflective Floodgate/Cumulus probes
+└── CumulusFormBase               Cumulus form base with LangService integration
+
+nexus-paper-listeners/            Phase 3
+├── @Listener
+└── ListenerRegistry              ClassGraph scanner + Bukkit register
+
+nexus-vault/                      Phase 4
+├── EconomyProvider               Plugin-side port
+├── VaultEconomyAdapter           Vault adapter (re-resolves every call)
+├── VaultHealth                   Mutable availability flag bean
+└── VaultDegradedEvent            Fired when provider disappears
+
+nexus-papi/                       Phase 4
+├── @PapiExpansion
+├── PlaceholderResolver
+├── NexusExpansionAdapter         Bridges Nexus → PAPI's PlaceholderExpansion
+└── ExpansionRegistry             ClassGraph scanner + PAPI register
 ```
 
 ## Requirements
 
 - Java 21+ (for virtual threads)
 - Kotlin 2.0+
-- **Hytale commands**: Hytale Server API
-- **Paper commands**: Paper 1.21.1+
+- **Paper modules**: Paper 1.21.11-R0.1-SNAPSHOT or newer
+- **Hytale module**: Hytale Server API
+- Optional runtime deps: PlaceholderAPI 2.11+, Vault 1.7+, Floodgate 2.2+, Cumulus 2.0+
 
-## Shadow JAR Relocation
+## Shadow JAR relocation
 
-When shading Nexus into your plugin, relocate ClassGraph as well:
+When shading Nexus into your plugin, relocate `net.badgersmc.nexus` and `io.github.classgraph`:
 
 ```kotlin
 tasks.shadowJar {
     relocate("net.badgersmc.nexus", "com.example.mymod.shaded.nexus")
     relocate("io.github.classgraph", "com.example.mymod.shaded.classgraph")
     relocate("nonapi.io.github.classgraph", "com.example.mymod.shaded.nonapi.classgraph")
+}
+```
+
+If you're using Paper's runtime library loader (recommended — see `nexus-paper-loader`), exclude the heavy transitives from the shadow jar so they're downloaded by Paper at runtime instead of bundled:
+
+```kotlin
+tasks.shadowJar {
+    dependencies {
+        exclude(dependency("org.jetbrains.kotlin:kotlin-stdlib:.*"))
+        exclude(dependency("org.jetbrains.kotlin:kotlin-reflect:.*"))
+        exclude(dependency("org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:.*"))
+        exclude(dependency("com.charleskorn.kaml:kaml-jvm:.*"))
+        // …keep this list in sync with NexusPaperPluginLoader.STANDARD_NEXUS_LIBRARIES
+    }
 }
 ```
 
