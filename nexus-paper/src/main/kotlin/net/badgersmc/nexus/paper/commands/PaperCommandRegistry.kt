@@ -70,34 +70,17 @@ class PaperCommandRegistry(
         sub: PaperSubcommandDefinition,
         bean: Any
     ) {
-        // Build the literal chain from the path segments, keeping a reference to the head so
-        // we attach the full chain to root (not just the deepest node).
-        val head = Commands.literal(sub.path.first())
-        var current = head
-        for (segment in sub.path.drop(1)) {
-            val next = Commands.literal(segment)
-            current.then(next)
-            current = next
-        }
+        // Build EVERYTHING bottom-up: Brigadier's then() calls build() immediately on the child,
+        // so adding children to a builder AFTER it was passed to then() has no effect on the
+        // already-built node. This applies to literal path segments too, not just args — a prior
+        // top-down loop over path segments silently dropped argument children of multi-segment
+        // subcommands like @Subcommand("auction start").
 
-        // Combine permission + playerOnly into a single requires() call.
-        // Brigadier's requires() replaces (not composes) on each call, so two separate
-        // calls would silently drop the first condition.
-        val permission = sub.permission
-        current.requires { source ->
-            (permission == null || source.sender.hasPermission(permission)) &&
-            (!sub.isPlayerOnly || source.sender is Player)
-        }
-
-        // Build argument chain bottom-up: Brigadier's then() calls build() immediately on the
-        // child, so adding children to a builder AFTER it was passed to then() has no effect on
-        // the already-built node. We must construct the deepest node first and work upward.
         val argParams = sub.parameters.filter { it.isArg }
         val argBuilders = argParams.map { param ->
             val resolver = PaperArgumentResolvers.get(param.type)
                 ?: throw CommandException("No resolver for ${param.type.simpleName}")
             val builder = Commands.argument(param.name, resolver.argumentType())
-            // Attach tab-completion suggestions if @Suggests was specified
             val providerName = sub.suggestions[param.name]
             if (providerName != null) {
                 val provider = suggestionProviders[providerName]
@@ -110,25 +93,39 @@ class PaperCommandRegistry(
             builder
         }
 
+        // Build literal path bottom-up. The deepest literal carries requires + executes (or the
+        // first arg). Each parent literal is built fresh and gets its child via then().
+        val literalBuilders = sub.path.map { Commands.literal(it) }
+        val deepest = literalBuilders.last()
+
+        val permission = sub.permission
+        deepest.requires { source ->
+            (permission == null || source.sender.hasPermission(permission)) &&
+            (!sub.isPlayerOnly || source.sender is Player)
+        }
+
         if (argBuilders.isNotEmpty()) {
-            // Add executes to the deepest (last) argument
             argBuilders.last().executes { ctx ->
                 executeSubcommand(ctx, sub, bean)
                 Command.SINGLE_SUCCESS
             }
-            // Chain bottom-up so each parent sees its fully-built child
             for (i in argBuilders.size - 2 downTo 0) {
                 argBuilders[i].then(argBuilders[i + 1])
             }
-            current.then(argBuilders.first())
+            deepest.then(argBuilders.first())
         } else {
-            current.executes { ctx ->
+            deepest.executes { ctx ->
                 executeSubcommand(ctx, sub, bean)
                 Command.SINGLE_SUCCESS
             }
         }
 
-        root.then(head)
+        // Chain literals bottom-up.
+        for (i in literalBuilders.size - 2 downTo 0) {
+            literalBuilders[i].then(literalBuilders[i + 1])
+        }
+
+        root.then(literalBuilders.first())
     }
 
     private fun executeSubcommand(
