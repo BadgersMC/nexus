@@ -2,11 +2,8 @@ package net.badgersmc.nexus.worldedit
 
 import com.sk89q.worldedit.extent.clipboard.Clipboard
 import com.sk89q.worldedit.extent.clipboard.io.ClipboardFormats
-import com.sk89q.worldedit.math.BlockVector3
 import org.bukkit.World
-import org.bukkit.plugin.Plugin
 import java.io.File
-import java.util.logging.Logger
 
 /**
  * Adapter that selects FastAsyncWorldEdit when available and falls back
@@ -15,9 +12,14 @@ import java.util.logging.Logger
  */
 object WorldEditAdapter {
 
-    private val log = Logger.getLogger(WorldEditAdapter::class.java.name)
-
-    /** True if FastAsyncWorldEdit is loaded on this server. */
+    /**
+     * True if FastAsyncWorldEdit is loaded on this server.
+     *
+     * Exposed as a public API so consumers (e.g. `WorldEditSchematicAdapter`
+     * in downstream plugins) can branch on FAWE availability — for example
+     * to dispatch pastes through FAWE's async queue instead of Bukkit's
+     * scheduler when FAWE is present.
+     */
     val isFawePresent: Boolean by lazy {
         try {
             Class.forName("com.fastasyncworldedit.core.Fawe")
@@ -33,7 +35,10 @@ object WorldEditAdapter {
         val format = ClipboardFormats.findByFile(file)
             ?: ClipboardFormats.findByAlias("schem")
             ?: error("No schematic format found for ${file.name}")
-        file.parentFile?.mkdirs()
+        val parent = file.parentFile
+        if (parent != null && !parent.exists() && !parent.mkdirs()) {
+            error("Failed to create schematic directory: ${parent.absolutePath}")
+        }
         file.outputStream().use { out ->
             format.getWriter(out).use { writer -> writer.write(clipboard) }
         }
