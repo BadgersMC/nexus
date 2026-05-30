@@ -21,4 +21,5 @@ include("nexus-vault")
 include("nexus-papi")
 include("nexus-permissions")
 include("nexus-permissions-gradle")
+include("nexus-worldedit")
 // Root project is a pure aggregator — no source, no publishable artifact.
