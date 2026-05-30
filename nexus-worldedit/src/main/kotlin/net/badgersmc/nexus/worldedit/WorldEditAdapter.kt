@@ -21,10 +21,7 @@ object WorldEditAdapter {
      * scheduler when FAWE is present.
      */
     val isFawePresent: Boolean by lazy {
-        try {
-            Class.forName("com.fastasyncworldedit.core.Fawe")
-            true
-        } catch (_: ClassNotFoundException) { false }
+        runCatching { Class.forName("com.fastasyncworldedit.core.Fawe") }.isSuccess
     }
 
     /**
