@@ -177,27 +177,24 @@ object ResourceExtractor {
         prefix: String,
         targetDir: File
     ): List<File> {
-        val extracted = mutableListOf<File>()
         val targetRoot = targetDir.canonicalFile
-        ZipFile(jarFile).use { zip ->
-            val entries = zip.entries()
-            while (entries.hasMoreElements()) {
-                val entry = entries.nextElement()
-                if (entry.isDirectory) continue
-                val name = entry.name
-                if (!name.startsWith("$prefix/") && name != prefix) continue
-                val relative = name.removePrefix("$prefix/")
-                if (relative.isEmpty()) continue
-                val outFile = safeChild(targetRoot, relative) ?: continue
-                if (outFile.exists()) continue
-                outFile.parentFile?.mkdirs()
-                zip.getInputStream(entry).use { input ->
-                    outFile.outputStream().use { output -> input.copyTo(output) }
+        return ZipFile(jarFile).use { zip ->
+            zip.entries().asSequence()
+                .filterNot { it.isDirectory }
+                .filter { it.name.startsWith("$prefix/") || it.name == prefix }
+                .mapNotNull { entry ->
+                    val relative = entry.name.removePrefix("$prefix/")
+                    if (relative.isEmpty()) return@mapNotNull null
+                    val outFile = safeChild(targetRoot, relative) ?: return@mapNotNull null
+                    if (outFile.exists()) return@mapNotNull null
+                    outFile.parentFile?.mkdirs()
+                    zip.getInputStream(entry).use { input ->
+                        outFile.outputStream().use { output -> input.copyTo(output) }
+                    }
+                    outFile
                 }
-                extracted.add(outFile)
-            }
+                .toList()
         }
-        return extracted
     }
 
     /**
@@ -221,28 +218,21 @@ object ResourceExtractor {
         classLoader: ClassLoader,
         prefix: String,
         targetDir: File
-    ): List<File> {
-        val extracted = mutableListOf<File>()
-        val urls = classLoader.getResources(prefix).toList()
-        for (url in urls) {
-            if (url.protocol != "file") continue
-            val root = try {
-                File(url.toURI())
-            } catch (_: Exception) {
-                continue
+    ): List<File> =
+        classLoader.getResources(prefix).toList()
+            .filter { it.protocol == "file" }
+            .mapNotNull { url -> runCatching { File(url.toURI()) }.getOrNull() }
+            .filter { it.isDirectory }
+            .flatMap { root ->
+                root.walkTopDown().filter { it.isFile }.mapNotNull { source ->
+                    val relative = source.relativeTo(root).path.replace(File.separatorChar, '/')
+                    val outFile = File(targetDir, relative)
+                    if (outFile.exists()) return@mapNotNull null
+                    outFile.parentFile?.mkdirs()
+                    source.inputStream().use { input ->
+                        outFile.outputStream().use { output -> input.copyTo(output) }
+                    }
+                    outFile
+                }.toList()
             }
-            if (!root.isDirectory) continue
-            root.walkTopDown().filter { it.isFile }.forEach { source ->
-                val relative = source.relativeTo(root).path.replace(File.separatorChar, '/')
-                val outFile = File(targetDir, relative)
-                if (outFile.exists()) return@forEach
-                outFile.parentFile?.mkdirs()
-                source.inputStream().use { input ->
-                    outFile.outputStream().use { output -> input.copyTo(output) }
-                }
-                extracted.add(outFile)
-            }
-        }
-        return extracted
-    }
 }

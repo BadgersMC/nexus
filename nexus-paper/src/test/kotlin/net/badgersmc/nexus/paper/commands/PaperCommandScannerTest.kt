@@ -11,7 +11,10 @@ import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-// Test fixture command class in this package so scanner finds it
+// Test fixture command class in this package so scanner finds it.
+// Methods exist only to carry annotations the scanner reads via reflection;
+// their bodies and parameters are intentionally unused.
+@Suppress("EmptyFunctionBlock", "UnusedParameter")
 @Command(name = "test", description = "Test command")
 class TestCommand {
     @Subcommand("hello")

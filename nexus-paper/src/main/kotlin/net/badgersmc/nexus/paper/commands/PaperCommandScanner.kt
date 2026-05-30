@@ -55,29 +55,7 @@ class PaperCommandScanner {
                 val suggestionsMap = mutableMapOf<String, String>()
                 val parameters = method.parameters.drop(1) // skip 'this'
                     .mapIndexed { idx, param ->
-                        val arg = param.findAnnotation<Arg>()
-                        val ctx = param.findAnnotation<Context>()
-                        val suggests = param.findAnnotation<Suggests>()
-                        if (arg == null && ctx == null) throw CommandException(
-                            "Method ${method.name} parameter '${param.name}' needs @Arg or @Context"
-                        )
-                        if (arg != null && !PaperArgumentResolvers.hasResolver(
-                                param.type.classifier as KClass<*>)) {
-                            throw CommandException(
-                                "No PaperArgumentResolver for type '${(param.type.classifier as KClass<*>).simpleName}' " +
-                                "in ${klass.simpleName}::${method.name}"
-                            )
-                        }
-                        if (suggests != null && arg != null) {
-                            suggestionsMap[param.name ?: "param$idx"] = suggests.value
-                        }
-                        CommandParameter(
-                            name = param.name ?: "param$idx",
-                            type = param.type.classifier as KClass<*>,
-                            index = idx,
-                            argAnnotation = arg,
-                            contextAnnotation = ctx
-                        )
+                        buildParameter(klass, method, param, idx, suggestionsMap)
                     }
 
                 PaperSubcommandDefinition(path, method, parameters, permission, isPlayerOnly, isAsync, suggestionsMap)
@@ -88,5 +66,36 @@ class PaperCommandScanner {
         )
 
         return PaperCommandDefinition(klass, annotation, subcommands)
+    }
+
+    private fun buildParameter(
+        klass: KClass<*>,
+        method: kotlin.reflect.KFunction<*>,
+        param: kotlin.reflect.KParameter,
+        idx: Int,
+        suggestionsMap: MutableMap<String, String>
+    ): CommandParameter {
+        val arg = param.findAnnotation<Arg>()
+        val ctx = param.findAnnotation<Context>()
+        val suggests = param.findAnnotation<Suggests>()
+        if (arg == null && ctx == null) throw CommandException(
+            "Method ${method.name} parameter '${param.name}' needs @Arg or @Context"
+        )
+        if (arg != null && !PaperArgumentResolvers.hasResolver(param.type.classifier as KClass<*>)) {
+            throw CommandException(
+                "No PaperArgumentResolver for type '${(param.type.classifier as KClass<*>).simpleName}' " +
+                    "in ${klass.simpleName}::${method.name}"
+            )
+        }
+        if (suggests != null && arg != null) {
+            suggestionsMap[param.name ?: "param$idx"] = suggests.value
+        }
+        return CommandParameter(
+            name = param.name ?: "param$idx",
+            type = param.type.classifier as KClass<*>,
+            index = idx,
+            argAnnotation = arg,
+            contextAnnotation = ctx
+        )
     }
 }

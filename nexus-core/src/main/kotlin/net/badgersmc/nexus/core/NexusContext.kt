@@ -7,7 +7,6 @@ import net.badgersmc.nexus.config.ConfigManager
 import net.badgersmc.nexus.coroutines.NexusDispatchers
 import net.badgersmc.nexus.coroutines.createNexusScope
 import net.badgersmc.nexus.scanning.ComponentScanner
-import org.slf4j.LoggerFactory
 import java.nio.file.Path
 import kotlin.reflect.KClass
 
@@ -24,7 +23,6 @@ class NexusContext private constructor(
     private val contextName: String
 ) {
 
-    private val logger = LoggerFactory.getLogger(NexusContext::class.java)
     private val registry = ComponentRegistry()
     private val factory = BeanFactory(registry)
     private val scanner = ComponentScanner()
