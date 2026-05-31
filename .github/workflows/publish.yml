@@ -1,18 +1,64 @@
-name: Publish to GitHub Packages
+name: CI / Publish
 
 on:
   push:
+    branches: [main]
     tags:
-      - 'v*.*.*'      # v1.11.0, v1.12.0-rc1, etc.
-  workflow_dispatch:  # allow manual publishes from the Actions tab
+      - 'v*.*.*'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
   packages: write     # required for maven.pkg.github.com push
 
 jobs:
+  ci:
+    runs-on: ubuntu-latest
+    if: >-
+      (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')) ||
+      github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - run: chmod +x ./gradlew
+      - name: Run detekt
+        run: ./gradlew detekt --no-daemon --no-configuration-cache
+      - name: Upload detekt report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: detekt-report
+          path: '**/build/reports/detekt/'
+      - name: Run Semgrep
+        uses: semgrep/semgrep-action@v1
+        with:
+          config: >
+            p/kotlin
+            p/java
+            p/secrets
+        continue-on-error: true
+      - name: Run Trivy
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+        # Advisory-only, consistent with Semgrep above: report findings without
+        # failing the check. Drop continue-on-error and add exit-code: '1' to gate.
+        continue-on-error: true
+
   publish:
     runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: ci
     steps:
       - name: Checkout
         uses: actions/checkout@v4

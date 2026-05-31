@@ -24,7 +24,6 @@ class ConfigManager(configDirectory: Path) {
                 loader.load(configClass)
             } catch (e: Exception) {
                 System.err.println("Failed to load config ${configClass.simpleName}: ${e.message}")
-                e.printStackTrace()
                 throw ConfigException("Failed to load ${configClass.simpleName}", e)
             }
         } as T
@@ -63,7 +62,6 @@ class ConfigManager(configDirectory: Path) {
             configs[config::class] = config
         } catch (e: Exception) {
             System.err.println("Failed to save config ${config::class.simpleName}: ${e.message}")
-            e.printStackTrace()
             throw ConfigException("Failed to save ${config::class.simpleName}", e)
         }
     }
@@ -80,7 +78,6 @@ class ConfigManager(configDirectory: Path) {
             loader.reload(config as T)
         } catch (e: Exception) {
             System.err.println("Failed to reload config ${configClass.simpleName}: ${e.message}")
-            e.printStackTrace()
             throw ConfigException("Failed to reload ${configClass.simpleName}", e)
         }
     }

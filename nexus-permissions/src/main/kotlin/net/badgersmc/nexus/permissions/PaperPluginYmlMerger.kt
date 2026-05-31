@@ -28,15 +28,10 @@ object PaperPluginYmlMerger {
         // that isn't a continuation (i.e. doesn't start with space/tab)
         // and isn't a blank line. Comments at column 0 are treated as
         // siblings, terminating the block.
-        var endIdx = lines.size
-        for (i in (startIdx + 1) until lines.size) {
+        val endIdx = ((startIdx + 1) until lines.size).firstOrNull { i ->
             val line = lines[i]
-            if (line.isEmpty()) continue
-            val first = line[0]
-            if (first == ' ' || first == '\t') continue
-            endIdx = i
-            break
-        }
+            line.isNotEmpty() && line[0] != ' ' && line[0] != '\t'
+        } ?: lines.size
 
         val before = lines.subList(0, startIdx).joinToString("\n")
         val after = lines.subList(endIdx, lines.size).joinToString("\n")

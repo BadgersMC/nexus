@@ -1,6 +1,7 @@
 plugins {
     kotlin("jvm") version "2.0.21" apply false
     kotlin("plugin.serialization") version "2.0.21" apply false
+    id("io.gitlab.arturbosch.detekt") version "1.23.8" apply false
 }
 
 group = "net.badgersmc"
@@ -46,5 +47,15 @@ subprojects {
                 }
             }
         }
+    }
+
+    // Detekt runs standalone; harmless on non-Kotlin modules, no-op when there are no sources.
+    // The plugin already wires `detekt` into the `check` lifecycle by default.
+    apply(plugin = "io.gitlab.arturbosch.detekt")
+
+    configure<io.gitlab.arturbosch.detekt.extensions.DetektExtension> {
+        config.setFrom(rootProject.file("config/detekt/detekt.yml"))
+        buildUponDefaultConfig = false
+        allRules = false
     }
 }

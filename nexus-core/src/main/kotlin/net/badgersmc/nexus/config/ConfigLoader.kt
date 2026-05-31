@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory
 import java.nio.file.Path
 import kotlin.reflect.KClass
 import kotlin.reflect.KMutableProperty
+import kotlin.reflect.KProperty
 import kotlin.reflect.full.findAnnotation
 import kotlin.reflect.full.memberProperties
 import kotlin.reflect.jvm.isAccessible
@@ -105,7 +106,6 @@ class ConfigLoader(private val configDirectory: Path) {
     /**
      * Load values from map into object.
      */
-    @Suppress("UNCHECKED_CAST")
     private fun <T : Any> loadFromMap(obj: T, map: Map<String, Any?>) {
         obj::class.memberProperties.forEach { property ->
             if (property !is KMutableProperty<*>) return@forEach
@@ -116,31 +116,41 @@ class ConfigLoader(private val configDirectory: Path) {
 
             try {
                 property.isAccessible = true
-                val convertedValue = when (property.returnType.classifier) {
-                    String::class -> value.toString()
-                    Int::class -> (value as? Number)?.toInt()
-                    Long::class -> (value as? Number)?.toLong()
-                    Double::class -> (value as? Number)?.toDouble()
-                    Float::class -> (value as? Number)?.toFloat()
-                    Boolean::class -> value as? Boolean
-                    List::class -> value as? List<*>
-                    Set::class -> (value as? List<*>)?.toSet()
-                    Map::class -> value as? Map<*, *>
-                    else -> {
-                        // Nested object
-                        val nestedInstance = property.getter.call(obj)
-                        if (nestedInstance != null && value is Map<*, *>) {
-                            loadFromMap(nestedInstance, value as Map<String, Any?>)
-                            nestedInstance
-                        } else null
-                    }
-                }
-
+                val convertedValue = convertValue(property, value, obj)
                 if (convertedValue != null) {
                     property.setter.call(obj, convertedValue)
                 }
             } catch (e: Exception) {
                 logger.error("Failed to load config field ${property.name}: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * Convert a raw map [value] into the type expected by [property].
+     * Nested objects are populated recursively via [loadFromMap].
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun convertValue(property: KProperty<*>, value: Any, obj: Any): Any? {
+        return when (property.returnType.classifier) {
+            String::class -> value.toString()
+            Int::class -> (value as? Number)?.toInt()
+            Long::class -> (value as? Number)?.toLong()
+            Double::class -> (value as? Number)?.toDouble()
+            Float::class -> (value as? Number)?.toFloat()
+            Boolean::class -> value as? Boolean
+            List::class -> value as? List<*>
+            Set::class -> (value as? List<*>)?.toSet()
+            Map::class -> value as? Map<*, *>
+            else -> {
+                // Nested object
+                val nestedInstance = property.getter.call(obj)
+                if (nestedInstance != null && value is Map<*, *>) {
+                    loadFromMap(nestedInstance, value as Map<String, Any?>)
+                    nestedInstance
+                } else {
+                    null
+                }
             }
         }
     }

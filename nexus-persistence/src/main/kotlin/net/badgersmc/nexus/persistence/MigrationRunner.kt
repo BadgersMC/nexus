@@ -62,55 +62,14 @@ class MigrationRunner(
         // duplicate version numbers across JARs / exploded classpath roots
         // and fail loudly. Silently overwriting one migration with another
         // would make `runAll()` nondeterministic w.r.t. classpath ordering.
-        val all = mutableListOf<Migration>()
         val prefix = resourcePrefix.trim('/')
-
-        // Fast path: enumerate every JAR on the classloader whose entries
-        // start with the prefix. Walking the entire classpath catches
-        // migrations that ship in dependency JARs (a single-JAR probe would
-        // miss them — only the runner's own JAR was visible before).
-        for (jar in locateClassLoaderJars()) {
-            try {
-                ZipFile(jar).use { zip ->
-                    val entries = zip.entries()
-                    while (entries.hasMoreElements()) {
-                        val entry = entries.nextElement()
-                        if (entry.isDirectory) continue
-                        val name = entry.name
-                        if (!name.startsWith("$prefix/")) continue
-                        val fileName = name.substringAfterLast('/')
-                        val match = migrationPattern.matchEntire(fileName) ?: continue
-                        val version = match.groupValues[1].toInt()
-                        val title = match.groupValues[2]
-                        all += Migration(version, title, name)
-                    }
-                }
-            } catch (_: Exception) {
-                // skip unreadable jars (signed-jar quirks, etc.)
-            }
-        }
-
-        // Exploded classpath fallback (also used by unit tests).
-        val dirUrls = classLoader.getResources(prefix).toList()
-        for (url in dirUrls) {
-            if (url.protocol != "file") continue
-            val root = try { java.io.File(url.toURI()) } catch (_: Exception) { continue }
-            if (!root.isDirectory) continue
-            root.walkTopDown().filter { it.isFile }.forEach { file ->
-                val match = migrationPattern.matchEntire(file.name) ?: return@forEach
-                val version = match.groupValues[1].toInt()
-                val title = match.groupValues[2]
-                val resourceName = "$prefix/${file.relativeTo(root).path.replace(java.io.File.separatorChar, '/')}"
-                all += Migration(version, title, resourceName)
-            }
-        }
+        val all = scanJars(prefix) + scanExplodedDirs(prefix)
 
         // Deduplicate identical entries (same resource path discovered via
         // both the JAR walk and the exploded-classpath walk) and then assert
         // there are no remaining version collisions.
         val unique = all.distinctBy { it.resource }
-        val byVersion = unique.groupBy { it.version }
-        val collisions = byVersion.filterValues { it.size > 1 }
+        val collisions = unique.groupBy { it.version }.filterValues { it.size > 1 }
         if (collisions.isNotEmpty()) {
             val msg = collisions.entries.joinToString("; ") { (v, list) ->
                 "version $v -> [${list.joinToString { it.resource }}]"
@@ -118,6 +77,44 @@ class MigrationRunner(
             error("Duplicate migration versions discovered: $msg")
         }
         return unique.sortedBy { it.version }
+    }
+
+    /**
+     * Fast path: enumerate every JAR on the classloader whose entries start
+     * with the prefix. Walking the entire classpath catches migrations that
+     * ship in dependency JARs (a single-JAR probe would miss them).
+     */
+    private fun scanJars(prefix: String): List<Migration> =
+        locateClassLoaderJars().flatMap { jar ->
+            // skip unreadable jars (signed-jar quirks, etc.)
+            runCatching {
+                ZipFile(jar).use { zip ->
+                    zip.entries().asSequence()
+                        .filterNot { it.isDirectory }
+                        .filter { it.name.startsWith("$prefix/") }
+                        .mapNotNull { entry -> toMigration(entry.name.substringAfterLast('/'), entry.name) }
+                        .toList()
+                }
+            }.getOrDefault(emptyList())
+        }
+
+    /** Exploded classpath fallback (also used by unit tests). */
+    private fun scanExplodedDirs(prefix: String): List<Migration> =
+        classLoader.getResources(prefix).toList()
+            .filter { it.protocol == "file" }
+            .mapNotNull { url -> runCatching { java.io.File(url.toURI()) }.getOrNull() }
+            .filter { it.isDirectory }
+            .flatMap { root ->
+                root.walkTopDown().filter { it.isFile }.mapNotNull { file ->
+                    val resource = "$prefix/${file.relativeTo(root).path.replace(java.io.File.separatorChar, '/')}"
+                    toMigration(file.name, resource)
+                }.toList()
+            }
+
+    /** Parse a migration filename into a [Migration], or null if it doesn't match. */
+    private fun toMigration(fileName: String, resource: String): Migration? {
+        val match = migrationPattern.matchEntire(fileName) ?: return null
+        return Migration(match.groupValues[1].toInt(), match.groupValues[2], resource)
     }
 
     private fun ensureMigrationTable(conn: java.sql.Connection) {
@@ -164,37 +161,52 @@ class MigrationRunner(
      * the kinds of DDL these migrations contain — we deliberately do NOT try
      * to handle stored procedures or `$$` quoting.
      */
-    private fun splitStatements(sql: String): List<String> {
-        val statements = mutableListOf<String>()
-        val current = StringBuilder()
-        var inSingle = false
-        var inDouble = false
-        var i = 0
-        while (i < sql.length) {
-            val c = sql[i]
-            // Line comment: skip to newline.
-            if (!inSingle && !inDouble && c == '-' && i + 1 < sql.length && sql[i + 1] == '-') {
-                val nl = sql.indexOf('\n', i)
-                i = if (nl == -1) sql.length else nl
-                continue
+    private fun splitStatements(sql: String): List<String> = StatementSplitter().split(sql)
+
+    /**
+     * Tiny state machine that walks a SQL script char-by-char, tracking quote
+     * state so `;` separators and `--` line comments inside string literals are
+     * ignored. State lives in fields so each step stays simple.
+     */
+    private class StatementSplitter {
+        private val statements = mutableListOf<String>()
+        private val current = StringBuilder()
+        private var inSingle = false
+        private var inDouble = false
+
+        fun split(sql: String): List<String> {
+            var i = 0
+            while (i < sql.length) {
+                i = if (isLineCommentStart(sql, i)) skipToNewline(sql, i) else { consume(sql[i]); i + 1 }
             }
+            flush()
+            return statements
+        }
+
+        private fun isLineCommentStart(sql: String, i: Int): Boolean =
+            !inSingle && !inDouble && sql[i] == '-' && i + 1 < sql.length && sql[i + 1] == '-'
+
+        private fun skipToNewline(sql: String, i: Int): Int {
+            val nl = sql.indexOf('\n', i)
+            return if (nl == -1) sql.length else nl
+        }
+
+        private fun consume(c: Char) {
             when {
-                inSingle && c == '\'' -> { current.append(c); inSingle = false }
-                inDouble && c == '"' -> { current.append(c); inDouble = false }
-                !inSingle && !inDouble && c == '\'' -> { current.append(c); inSingle = true }
-                !inSingle && !inDouble && c == '"' -> { current.append(c); inDouble = true }
-                !inSingle && !inDouble && c == ';' -> {
-                    val trimmed = current.toString().trim()
-                    if (trimmed.isNotEmpty()) statements.add(trimmed)
-                    current.clear()
-                }
+                inSingle -> { current.append(c); if (c == '\'') inSingle = false }
+                inDouble -> { current.append(c); if (c == '"') inDouble = false }
+                c == '\'' -> { current.append(c); inSingle = true }
+                c == '"' -> { current.append(c); inDouble = true }
+                c == ';' -> flush()
                 else -> current.append(c)
             }
-            i++
         }
-        val tail = current.toString().trim()
-        if (tail.isNotEmpty()) statements.add(tail)
-        return statements
+
+        private fun flush() {
+            val trimmed = current.toString().trim()
+            if (trimmed.isNotEmpty()) statements.add(trimmed)
+            current.clear()
+        }
     }
 
     /**
